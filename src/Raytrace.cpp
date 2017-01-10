@@ -337,7 +337,7 @@ void main() {\n\
 #define AMBIENT_REFLECTION_CONSTANT 0.03f
 #define DIFFUSE_REFLECTION_CONSTANT 0.4f
 #define SPECULAR_REFLECTION_CONSTANT 0.3f
-        
+
 #define NUM_OBJECTS 4
         SceneObject *objects[NUM_OBJECTS];
         objects[0] = new PlaneObject(0, -2, 0, 0xFFAAAAAA, 10);
@@ -349,6 +349,7 @@ void main() {\n\
         Light *lights[NUM_LIGHTS];
         lights[0] = new Light(20, 20, 0, 0.95f);
 
+        bool lights_visible[NUM_LIGHTS];
         uint32 *pane = new uint32[1280 * 720];
         Vec3 *ray = new Vec3(0, 0, 0);
         Vec3 *result = new Vec3(0, 0, 0);
@@ -383,11 +384,30 @@ void main() {\n\
                 if (nearest_obj == nullptr) {
                     pane[x + y * 1280] = 0xFF000000;
                 } else {
-                    if (x == 664 && y == 319) {
+                    if (x == 842 && y == 236) {
                         printf("");
+                    }
+                    for (int i = 0; i < NUM_LIGHTS; i++) {
+                        Light *light = lights[i];
+                        ray->set(light->x - nearest_result->x, light->y - nearest_result->y, light->z - nearest_result->z);
+                        ray->normalize();
+                        bool found = false;
+                        for (int i = 0; i < NUM_OBJECTS; i++) {
+                            if (objects[i] == nearest_obj) {
+                                continue;
+                            }
+                            if (objects[i]->intersect(nearest_result, ray, result, normal)) {
+                                found = true;
+                                break;
+                            }
+                        }
+                        lights_visible[i] = !found;
                     }
                     float intensity = AMBIENT_REFLECTION_CONSTANT;
                     for (int i = 0; i < NUM_LIGHTS; i++) {
+                        if (!lights_visible[i]) {
+                            continue;
+                        }
                         Light *light = lights[i];
                         light_dir->set(light->x - nearest_result->x, light->y - nearest_result->y, light->z - nearest_result->z);
                         light_dir->normalize();
@@ -396,7 +416,7 @@ void main() {\n\
                             continue;
                         }
                         intensity += light->intensity * d * DIFFUSE_REFLECTION_CONSTANT;
-                        float ref = 2 * (-light_dir->x * nearest_normal->x + -light_dir->y * nearest_normal->y + - light_dir->z * nearest_normal->z);
+                        float ref = 2 * (-light_dir->x * nearest_normal->x + -light_dir->y * nearest_normal->y + -light_dir->z * nearest_normal->z);
                         Vec3 r(-light_dir->x - ref * nearest_normal->x, -light_dir->y - ref * nearest_normal->y, -light_dir->z - ref * nearest_normal->z);
                         r.normalize();
                         Vec3 v(camera->x - result->x, camera->y - result->y, camera->z - result->z);
