@@ -342,7 +342,7 @@ void main() {\n\
         SceneObject *objects[NUM_OBJECTS];
         objects[0] = new PlaneObject(0, -2, 0, 0xFFAAAAAA, 10);
         objects[1] = new SphereObject(0, -1, 0, 1, 0xFF00FF00, 25);
-        objects[2] = new SphereObject(-4, 0, 0, 2, 0xFFFF0000, 40);
+        objects[2] = new SphereObject(-4, 0, 0, 2, 0xFFFF00FF, 40);
         objects[3] = new SphereObject(4, -1, 0, 1, 0xFF0000FF, 14);
 
 #define NUM_LIGHTS 1
@@ -370,6 +370,7 @@ void main() {\n\
                     ray->set(x0, y0, -camera->z);
                     ray->normalize();
                     if (objects[i]->intersect(camera, ray, result, normal)) {
+                        // Expand: bump mapping
                         float dist = (result->x - camera->x) * (result->x - camera->x);
                         dist += (result->y - camera->y) * (result->y - camera->y);
                         dist += (result->z - camera->z) * (result->z - camera->z);
@@ -396,7 +397,9 @@ void main() {\n\
                             if (objects[i] == nearest_obj) {
                                 continue;
                             }
-                            if (objects[i]->intersect(nearest_result, ray, result, normal)) {
+                            if (objects[i]->intersect(nearest_result, ray, result, normal)) {-
+                                // Expand: light radius for soft shadows
+                                // Expand: transparent or semi-transparent materials
                                 found = true;
                                 break;
                             }
@@ -411,6 +414,7 @@ void main() {\n\
                         Light *light = lights[i];
                         light_dir->set(light->x - nearest_result->x, light->y - nearest_result->y, light->z - nearest_result->z);
                         light_dir->normalize();
+                        // Expand: attenuation radius for light
                         float d = nearest_normal->dot(light_dir);
                         if (d <= 0) {
                             continue;
@@ -427,7 +431,9 @@ void main() {\n\
                         }
                         float spec = SPECULAR_REFLECTION_CONSTANT * std::pow(sp, nearest_obj->shiny);
                         intensity += light->intensity * spec;
+                        // Expand: colored lighting
                     }
+                    // Expand: check reflectivity of material and compute bounce if needed
                     int32 alpha = (nearest_obj->color >> 24) & 0xFF;
                     int32 red = (nearest_obj->color >> 16) & 0xFF;
                     red = (int) floor(red * intensity);
