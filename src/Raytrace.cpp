@@ -109,7 +109,7 @@ void main() {\n\
         if (action == GLFW_PRESS && button == GLFW_MOUSE_BUTTON_1) {
             double x, y;
             glfwGetCursorPos(window, &x, &y);
-            printf("Click %.1f %.1f\n", x, y);
+            printf("Click %.1f %.1f\n", x, 720 - y);
         }
     }
 
@@ -335,15 +335,15 @@ void main() {\n\
         glfwSetMouseButtonCallback(window, onMouseClick);
 
 #define AMBIENT_REFLECTION_CONSTANT 0.03f
-#define DIFFUSE_REFLECTION_CONSTANT 0.7f
-#define SPECULAR_REFLECTION_CONSTANT 0.5f
+#define DIFFUSE_REFLECTION_CONSTANT 0.4f
+#define SPECULAR_REFLECTION_CONSTANT 0.3f
         
 #define NUM_OBJECTS 4
         SceneObject *objects[NUM_OBJECTS];
-        objects[0] = new PlaneObject(0, -2, 0, 0xFF333333, 1);
-        objects[1] = new SphereObject(0, -1, 0, 1, 0xFF00FF00, 1);
-        objects[2] = new SphereObject(-4, 0, 0, 2, 0xFFFF0000, 1);
-        objects[3] = new SphereObject(4, -1, 0, 1, 0xFF0000FF, 1);
+        objects[0] = new PlaneObject(0, -2, 0, 0xFFAAAAAA, 10);
+        objects[1] = new SphereObject(0, -1, 0, 1, 0xFF00FF00, 25);
+        objects[2] = new SphereObject(-4, 0, 0, 2, 0xFFFF0000, 40);
+        objects[3] = new SphereObject(4, -1, 0, 1, 0xFF0000FF, 14);
 
 #define NUM_LIGHTS 1
         Light *lights[NUM_LIGHTS];
@@ -363,9 +363,6 @@ void main() {\n\
             float x0 = (x - 640) / 64.0f - camera->x;
             for (int y = 0; y < 720; y++) {
                 float y0 = (y - 360) / 64.0f - camera->y;
-                if (x == 640 && y == (720 - 438)) {
-                    printf("");
-                }
                 nearest = 1024 * 1024;
                 nearest_obj = nullptr;
                 for (int i = 0; i < NUM_OBJECTS; i++) {
@@ -386,16 +383,28 @@ void main() {\n\
                 if (nearest_obj == nullptr) {
                     pane[x + y * 1280] = 0xFF000000;
                 } else {
+                    if (x == 664 && y == 319) {
+                        printf("");
+                    }
                     float intensity = AMBIENT_REFLECTION_CONSTANT;
                     for (int i = 0; i < NUM_LIGHTS; i++) {
                         Light *light = lights[i];
                         light_dir->set(light->x - nearest_result->x, light->y - nearest_result->y, light->z - nearest_result->z);
                         light_dir->normalize();
                         float d = nearest_normal->dot(light_dir);
-                        intensity += light->intensity * std::max(0.0f, nearest_normal->dot(light_dir)) * DIFFUSE_REFLECTION_CONSTANT;
+                        if (d <= 0) {
+                            continue;
+                        }
+                        intensity += light->intensity * d * DIFFUSE_REFLECTION_CONSTANT;
                         float ref = 2 * (-light_dir->x * nearest_normal->x + -light_dir->y * nearest_normal->y + - light_dir->z * nearest_normal->z);
                         Vec3 r(-light_dir->x - ref * nearest_normal->x, -light_dir->y - ref * nearest_normal->y, -light_dir->z - ref * nearest_normal->z);
-                        float sp = (-light_dir->x - ref * nearest_normal->x)*(camera->x - result->x) + (-light_dir->y - ref * nearest_normal->y)*(camera->y - result->y) + (-light_dir->z - ref * nearest_normal->z)*(camera->z - result->z);
+                        r.normalize();
+                        Vec3 v(camera->x - result->x, camera->y - result->y, camera->z - result->z);
+                        v.normalize();
+                        float sp = r.dot(&v);
+                        if (sp <= 0) {
+                            continue;
+                        }
                         float spec = SPECULAR_REFLECTION_CONSTANT * std::pow(sp, nearest_obj->shiny);
                         intensity += light->intensity * spec;
                     }
