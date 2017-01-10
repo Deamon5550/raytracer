@@ -105,6 +105,14 @@ void main() {\n\
         *result_id = p_id;
     }
 
+    void onMouseClick(GLFWwindow *window, int button, int action, int mods) {
+        if (action == GLFW_PRESS && button == GLFW_MOUSE_BUTTON_1) {
+            double x, y;
+            glfwGetCursorPos(window, &x, &y);
+            printf("Click %.1f %.1f\n", x, y);
+        }
+    }
+
     class Vec3 {
     public:
         Vec3(float x0, float y0, float z0) {
@@ -166,21 +174,23 @@ void main() {\n\
         }
 
         bool intersect(Vec3 *camera, Vec3 *ray, Vec3 *result, Vec3 *normal) override {
-            float a = ray->dot(ray);
-            float b = ray->dot(camera->x - x, camera->y - y, camera->z - z);
-            float c = ((camera->x - x)*(camera->x - x) + (camera->y - y)*(camera->y - y) + (camera->z - z)*(camera->z - z)) - r*r;
-            float disc = b * b - a * c;
-            if (disc < 0) {
+            Vec3 l(x - camera->x, y - camera->y, z - camera->z);
+            float b = ray->dot(&l);
+            if (b < 0) {
                 return false;
             }
-            float t = 0;
-            if (disc == 0) {
-                t = -b / a;
+            float d2 = l.dot(&l) - b  * b;
+            if (d2 > r * r) {
+                return false;
+            }
+            float t = sqrt(r*r - d2);
+            if (t < 0) {
+                t = b + t;
             } else {
-                disc = sqrt(disc);
-                float t0 = (-b + disc) / a;
-                float t1 = (-b - disc) / a;
-                t = t0 > t1 ? t1 : t0;
+                t = b - t;
+            }
+            if (t < 0) {
+                return false;
             }
             result->set(ray->x * t + camera->x, ray->y * t + camera->y, ray->z * t + camera->z);
             normal->set(result->x - x, result->y - y, result->z - z);
@@ -204,11 +214,10 @@ void main() {\n\
             if (ray->y >= 0) {
                 return false;
             }
-            float cy = camera->y;
-            float dy = cy - y;
+            float dy = y - camera->y;
             float mul = dy / ray->y;
             result->set(camera->x + mul * ray->x, y, camera->z + mul * ray->z);
-            normal->set(0, -1, 0);
+            normal->set(0, 1, 0);
             return true;
         }
 
@@ -320,82 +329,79 @@ void main() {\n\
         glBufferData(GL_ELEMENT_ARRAY_BUFFER, 12, index_buffer, GL_STATIC_DRAW);
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
-        bool dirty = true;
+        glfwSetMouseButtonCallback(window, onMouseClick);
 
-#define NUM_OBJECTS 2
+#define NUM_OBJECTS 4
         SceneObject *objects[NUM_OBJECTS];
         objects[0] = new PlaneObject(0, -2, 0, 0xFF333333);
-        objects[1] = new SphereObject(0, -2, 0, 1, 0xFF00FF00);
-       // objects[1] = new SphereObject(0, 1, 7, 3, 0xFFFF0000);
-        //objects[2] = new SphereObject(4, -1, 5, 1, 0xFF0000FF);
+        objects[1] = new SphereObject(0, -1, 0, 1, 0xFF00FF00);
+        objects[2] = new SphereObject(-4, 0, 0, 2, 0xFFFF0000);
+        objects[3] = new SphereObject(4, -1, 0, 1, 0xFF0000FF);
 
 #define NUM_LIGHTS 1
         Light *lights[NUM_LIGHTS];
-        lights[0] = new Light(12, 5, 0, 0.95f);
+        lights[0] = new Light(20, 20, 0, 0.95f);
 
-        int ticks = 0;
-        printf("Starting loop\n");
-        while (!glfwWindowShouldClose(window)) {
-            ticks++;
-
-            //dirty = true;
-
-            if (dirty && ticks % 2 == 0) {
-                dirty = false;
-                // trace
-                uint32 *pane = new uint32[1280 * 720];
-                Vec3 *ray = new Vec3(0, 0, 0);
-                Vec3 *result = new Vec3(0, 0, 0);
-                Vec3 *normal = new Vec3(0, 0, 0);
-                Vec3 *camera = new Vec3(0, 0, -12);
-                float nearest = 4096 * 4096;
-                SceneObject *nearest_obj = nullptr;
-                Vec3 *nearest_result = new Vec3(0, 0, 0);
-                Vec3 *nearest_normal = new Vec3(0, 0, 0);
-                Vec3 *light_dir = new Vec3(0, 0, 0);
-                for (int x = 0; x < 1280; x++) {
-                    float x0 = (x - 640) / 64.0f - camera->x;
-                    for (int y = 0; y < 720; y++) {
-                        float y0 = (y - 360) / 64.0f - camera->y;
-                        nearest = 1024 * 1024;
-                        nearest_obj = nullptr;
-                        for (int i = 0; i < NUM_OBJECTS; i++) {
-                            ray->set(x0, y0, -camera->z);
-                            ray->normalize();
-                            if (objects[i]->intersect(camera, ray, result, normal)) {
-                                if (result->lengthSquared() < nearest) {
-                                    nearest = result->lengthSquared();
-                                    nearest_obj = objects[i];
-                                    nearest_result->set(result->x, result->y, result->z);
-                                    nearest_normal->set(normal->x, normal->y, normal->z);
-                                }
-                            }
-                        }
-                        if (nearest_obj == nullptr) {
-                            pane[x + y * 1280] = 0xFF000000;
-                        } else {
-                            float intensity = 0;
-                            for (int i = 0; i < NUM_LIGHTS; i++) {
-                                Light *light = lights[i];
-                                light_dir->set(nearest_result->x - light->x, nearest_result->y - light->y, nearest_result->y - light->y);
-                                light_dir->normalize();
-                                intensity += light->intensity * std::max(0.0f, nearest_normal->dot(light_dir));
-                            }
-                            int32 alpha = (nearest_obj->color >> 24) & 0xFF;
-                            int32 red = (nearest_obj->color >> 16) & 0xFF;
-                            red = (int) floor(red * intensity);
-                            int32 green = (nearest_obj->color >> 8) & 0xFF;
-                            green = (int) floor(green * intensity);
-                            int32 blue = (nearest_obj->color) & 0xFF;
-                            blue = (int) floor(blue * intensity);
-                            pane[x + y * 1280] = (alpha << 24) | (red << 16) | (green << 8) | blue;
+        uint32 *pane = new uint32[1280 * 720];
+        Vec3 *ray = new Vec3(0, 0, 0);
+        Vec3 *result = new Vec3(0, 0, 0);
+        Vec3 *normal = new Vec3(0, 0, 0);
+        Vec3 *camera = new Vec3(0, 0, -12);
+        float nearest = 4096 * 4096;
+        SceneObject *nearest_obj = nullptr;
+        Vec3 *nearest_result = new Vec3(0, 0, 0);
+        Vec3 *nearest_normal = new Vec3(0, 0, 0);
+        Vec3 *light_dir = new Vec3(0, 0, 0);
+        for (int x = 0; x < 1280; x++) {
+            float x0 = (x - 640) / 64.0f - camera->x;
+            for (int y = 0; y < 720; y++) {
+                float y0 = (y - 360) / 64.0f - camera->y;
+                if (x == 640 && y == (720 - 438)) {
+                    printf("");
+                }
+                nearest = 1024 * 1024;
+                nearest_obj = nullptr;
+                for (int i = 0; i < NUM_OBJECTS; i++) {
+                    ray->set(x0, y0, -camera->z);
+                    ray->normalize();
+                    if (objects[i]->intersect(camera, ray, result, normal)) {
+                        float dist = (result->x - camera->x) * (result->x - camera->x);
+                        dist += (result->y - camera->y) * (result->y - camera->y);
+                        dist += (result->z - camera->z) * (result->z - camera->z);
+                        if (dist < nearest) {
+                            nearest = dist;
+                            nearest_obj = objects[i];
+                            nearest_result->set(result->x, result->y, result->z);
+                            nearest_normal->set(normal->x, normal->y, normal->z);
                         }
                     }
                 }
-
-                glBindTexture(GL_TEXTURE_2D, tex);
-                glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1280, 720, 0, GL_RGBA, GL_UNSIGNED_BYTE, pane);
+                if (nearest_obj == nullptr) {
+                    pane[x + y * 1280] = 0xFF000000;
+                } else {
+                    float intensity = 0.05f;
+                    for (int i = 0; i < NUM_LIGHTS; i++) {
+                        Light *light = lights[i];
+                        light_dir->set(light->x - nearest_result->x, light->y - nearest_result->y, light->z - nearest_result->z);
+                        light_dir->normalize();
+                        intensity += light->intensity * std::max(0.0f, nearest_normal->dot(light_dir));
+                    }
+                    int32 alpha = (nearest_obj->color >> 24) & 0xFF;
+                    int32 red = (nearest_obj->color >> 16) & 0xFF;
+                    red = (int) floor(red * intensity);
+                    int32 green = (nearest_obj->color >> 8) & 0xFF;
+                    green = (int) floor(green * intensity);
+                    int32 blue = (nearest_obj->color) & 0xFF;
+                    blue = (int) floor(blue * intensity);
+                    pane[x + y * 1280] = (alpha << 24) | (red << 16) | (green << 8) | blue;
+                }
             }
+        }
+
+        glBindTexture(GL_TEXTURE_2D, tex);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1280, 720, 0, GL_RGBA, GL_UNSIGNED_BYTE, pane);
+        printf("Starting loop\n");
+        while (!glfwWindowShouldClose(window)) {
 
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
