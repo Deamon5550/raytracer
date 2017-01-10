@@ -161,16 +161,18 @@ void main() {\n\
 
         float x, y, z;
         uint32 color;
+        float shiny;
     };
 
     class SphereObject : public SceneObject {
     public:
-        SphereObject(float x0, float y0, float z0, float r0, uint32 col) {
+        SphereObject(float x0, float y0, float z0, float r0, uint32 col, float s) {
             x = x0;
             y = y0;
             z = z0;
             r = r0;
             color = col;
+            shiny = s;
         }
 
         bool intersect(Vec3 *camera, Vec3 *ray, Vec3 *result, Vec3 *normal) override {
@@ -203,11 +205,12 @@ void main() {\n\
 
     class PlaneObject : public SceneObject {
     public:
-        PlaneObject(float x0, float y0, float z0, uint32 col) {
+        PlaneObject(float x0, float y0, float z0, uint32 col, float s) {
             x = x0;
             y = y0;
             z = z0;
             color = col;
+            shiny = s;
         }
 
         bool intersect(Vec3 *camera, Vec3 *ray, Vec3 *result, Vec3 *normal) override {
@@ -331,12 +334,16 @@ void main() {\n\
 
         glfwSetMouseButtonCallback(window, onMouseClick);
 
+#define AMBIENT_REFLECTION_CONSTANT 0.03f
+#define DIFFUSE_REFLECTION_CONSTANT 0.7f
+#define SPECULAR_REFLECTION_CONSTANT 0.5f
+        
 #define NUM_OBJECTS 4
         SceneObject *objects[NUM_OBJECTS];
-        objects[0] = new PlaneObject(0, -2, 0, 0xFF333333);
-        objects[1] = new SphereObject(0, -1, 0, 1, 0xFF00FF00);
-        objects[2] = new SphereObject(-4, 0, 0, 2, 0xFFFF0000);
-        objects[3] = new SphereObject(4, -1, 0, 1, 0xFF0000FF);
+        objects[0] = new PlaneObject(0, -2, 0, 0xFF333333, 1);
+        objects[1] = new SphereObject(0, -1, 0, 1, 0xFF00FF00, 1);
+        objects[2] = new SphereObject(-4, 0, 0, 2, 0xFFFF0000, 1);
+        objects[3] = new SphereObject(4, -1, 0, 1, 0xFF0000FF, 1);
 
 #define NUM_LIGHTS 1
         Light *lights[NUM_LIGHTS];
@@ -379,12 +386,18 @@ void main() {\n\
                 if (nearest_obj == nullptr) {
                     pane[x + y * 1280] = 0xFF000000;
                 } else {
-                    float intensity = 0.05f;
+                    float intensity = AMBIENT_REFLECTION_CONSTANT;
                     for (int i = 0; i < NUM_LIGHTS; i++) {
                         Light *light = lights[i];
                         light_dir->set(light->x - nearest_result->x, light->y - nearest_result->y, light->z - nearest_result->z);
                         light_dir->normalize();
-                        intensity += light->intensity * std::max(0.0f, nearest_normal->dot(light_dir));
+                        float d = nearest_normal->dot(light_dir);
+                        intensity += light->intensity * std::max(0.0f, nearest_normal->dot(light_dir)) * DIFFUSE_REFLECTION_CONSTANT;
+                        float ref = 2 * (-light_dir->x * nearest_normal->x + -light_dir->y * nearest_normal->y + - light_dir->z * nearest_normal->z);
+                        Vec3 r(-light_dir->x - ref * nearest_normal->x, -light_dir->y - ref * nearest_normal->y, -light_dir->z - ref * nearest_normal->z);
+                        float sp = (-light_dir->x - ref * nearest_normal->x)*(camera->x - result->x) + (-light_dir->y - ref * nearest_normal->y)*(camera->y - result->y) + (-light_dir->z - ref * nearest_normal->z)*(camera->z - result->z);
+                        float spec = SPECULAR_REFLECTION_CONSTANT * std::pow(sp, nearest_obj->shiny);
+                        intensity += light->intensity * spec;
                     }
                     int32 alpha = (nearest_obj->color >> 24) & 0xFF;
                     int32 red = (nearest_obj->color >> 16) & 0xFF;
