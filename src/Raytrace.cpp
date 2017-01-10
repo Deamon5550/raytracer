@@ -115,42 +115,42 @@ void main() {\n\
 
     class Vec3 {
     public:
-        Vec3(float x0, float y0, float z0) {
+        Vec3(double x0, double y0, double z0) {
             x = x0;
             y = y0;
             z = z0;
         }
 
-        void set(float x0, float y0, float z0) {
+        void set(double x0, double y0, double z0) {
             x = x0;
             y = y0;
             z = z0;
         }
 
-        float lengthSquared() {
+        double lengthSquared() {
             return x * x + y * y + z * z;
         }
 
-        float length() {
+        double length() {
             return sqrt(x * x + y * y + z * z);
         }
 
         void normalize() {
-            float len = length();
+            double len = length();
             x /= len;
             y /= len;
             z /= len;
         }
 
-        float dot(Vec3 *o) {
+        double dot(Vec3 *o) {
             return x * o->x + y * o->y + z * o->z;
         }
 
-        float dot(float ox, float oy, float oz) {
+        double dot(double ox, double oy, double oz) {
             return x * ox + y * oy + z * oz;
         }
 
-        float x, y, z;
+        double x, y, z;
 
     };
 
@@ -159,14 +159,14 @@ void main() {\n\
 
         virtual bool intersect(Vec3 *camera, Vec3 *ray, Vec3 *result, Vec3 *normal) = 0;
 
-        float x, y, z;
+        double x, y, z;
         uint32 color;
-        float shiny;
+        double shiny;
     };
 
     class SphereObject : public SceneObject {
     public:
-        SphereObject(float x0, float y0, float z0, float r0, uint32 col, float s) {
+        SphereObject(double x0, double y0, double z0, double r0, uint32 col, double s) {
             x = x0;
             y = y0;
             z = z0;
@@ -177,15 +177,15 @@ void main() {\n\
 
         bool intersect(Vec3 *camera, Vec3 *ray, Vec3 *result, Vec3 *normal) override {
             Vec3 l(x - camera->x, y - camera->y, z - camera->z);
-            float b = ray->dot(&l);
+            double b = ray->dot(&l);
             if (b < 0) {
                 return false;
             }
-            float d2 = l.dot(&l) - b  * b;
+            double d2 = l.dot(&l) - b  * b;
             if (d2 > r * r) {
                 return false;
             }
-            float t = sqrt(r*r - d2);
+            double t = sqrt(r*r - d2);
             if (t < 0) {
                 t = b + t;
             } else {
@@ -205,7 +205,7 @@ void main() {\n\
 
     class PlaneObject : public SceneObject {
     public:
-        PlaneObject(float x0, float y0, float z0, uint32 col, float s) {
+        PlaneObject(double x0, double y0, double z0, uint32 col, float s) {
             x = x0;
             y = y0;
             z = z0;
@@ -214,14 +214,59 @@ void main() {\n\
         }
 
         bool intersect(Vec3 *camera, Vec3 *ray, Vec3 *result, Vec3 *normal) override {
-            if (ray->y >= 0) {
-                return false;
+            if (x != 0) {
+                double dx = x - camera->x;
+                double mul = dx / ray->x;
+                if (mul < 0) {
+                    return false;
+                }
+                double hz = camera->z + mul * ray->z;
+                if (hz < -0.01) {
+                    return false;
+                }
+                double hy = camera->y + mul * ray->y;
+                if (hy > 5 || hy < -5) {
+                    return false;
+                }
+                result->set(x, hy, hz);
+                normal->set(x < 0 ? 1 : -1, 0, 0);
+                return true;
+            } else if (y != 0) {
+                double dy = y - camera->y;
+                double mul = dy / ray->y;
+                if (mul < 0) {
+                    return false;
+                }
+                double hz = camera->z + mul * ray->z;
+                if (hz < -0.01) {
+                    return false;
+                }
+                double hx = camera->x + mul * ray->x;
+                if (hx < -5 || hx > 5) {
+                    return false;
+                }
+                result->set(hx, y, hz);
+                normal->set(0, y < 0 ? 1 : -1, 0);
+                return true;
+            } else if (z > 0) {
+                double dz = z - camera->z;
+                double mul = dz / ray->z;
+                if (mul < 0) {
+                    return false;
+                }
+                double hx = camera->x + mul * ray->x;
+                if (hx < -5 || hx > 5) {
+                    return false;
+                }
+                double hy = camera->y + mul * ray->y;
+                if (hy < -5 || hy > 5) {
+                    return false;
+                }
+                result->set(hx, hy, z);
+                normal->set(0, 0, z < 0 ? 1 : -1);
+                return true;
             }
-            float dy = y - camera->y;
-            float mul = dy / ray->y;
-            result->set(camera->x + mul * ray->x, y, camera->z + mul * ray->z);
-            normal->set(0, 1, 0);
-            return true;
+            return false;
         }
 
     };
@@ -338,16 +383,19 @@ void main() {\n\
 #define DIFFUSE_REFLECTION_CONSTANT 0.4f
 #define SPECULAR_REFLECTION_CONSTANT 0.3f
 
-#define NUM_OBJECTS 4
+#define NUM_OBJECTS 7
         SceneObject *objects[NUM_OBJECTS];
-        objects[0] = new PlaneObject(0, -2, 0, 0xFFAAAAAA, 10);
-        objects[1] = new SphereObject(0, -1, 0, 1, 0xFF00FF00, 25);
-        objects[2] = new SphereObject(-4, 0, 0, 2, 0xFFFF00FF, 40);
-        objects[3] = new SphereObject(4, -1, 0, 1, 0xFF0000FF, 14);
+        objects[0] = new PlaneObject(0, -5, 0, 0xFFDDDDDD, 10);
+        objects[1] = new PlaneObject(0, 5, 0, 0xFFDD0000, 10);
+        objects[2] = new PlaneObject(5, 0, 0, 0xFF00DD00, 10);
+        objects[3] = new PlaneObject(-5, 0, 0, 0xFF0000DD, 10);
+        objects[4] = new PlaneObject(0, 0, 10, 0xFFDD00DD, 10);
+        objects[5] = new SphereObject(2, -3.5, 3, 1.5, 0xFFFFFF00, 25);
+        objects[6] = new SphereObject(-2, -3.5, 5, 1.5, 0xFF00FFFF, 40);
 
 #define NUM_LIGHTS 1
         Light *lights[NUM_LIGHTS];
-        lights[0] = new Light(20, 20, 0, 0.95f);
+        lights[0] = new Light(0, 4.5, 2.5, 0.95);
 
         bool lights_visible[NUM_LIGHTS];
         uint32 *pane = new uint32[1280 * 720];
@@ -361,9 +409,9 @@ void main() {\n\
         Vec3 *nearest_normal = new Vec3(0, 0, 0);
         Vec3 *light_dir = new Vec3(0, 0, 0);
         for (int x = 0; x < 1280; x++) {
-            float x0 = (x - 640) / 64.0f - camera->x;
+            double x0 = (x - 640) / 64.0 - camera->x;
             for (int y = 0; y < 720; y++) {
-                float y0 = (y - 360) / 64.0f - camera->y;
+                double y0 = (y - 360) / 64.0 - camera->y;
                 nearest = 1024 * 1024;
                 nearest_obj = nullptr;
                 for (int i = 0; i < NUM_OBJECTS; i++) {
@@ -371,7 +419,7 @@ void main() {\n\
                     ray->normalize();
                     if (objects[i]->intersect(camera, ray, result, normal)) {
                         // Expand: bump mapping
-                        float dist = (result->x - camera->x) * (result->x - camera->x);
+                        double dist = (result->x - camera->x) * (result->x - camera->x);
                         dist += (result->y - camera->y) * (result->y - camera->y);
                         dist += (result->z - camera->z) * (result->z - camera->z);
                         if (dist < nearest) {
@@ -385,19 +433,26 @@ void main() {\n\
                 if (nearest_obj == nullptr) {
                     pane[x + y * 1280] = 0xFF000000;
                 } else {
-                    if (x == 842 && y == 236) {
+                    if (x == 492 && y == 453) {
                         printf("");
                     }
                     for (int i = 0; i < NUM_LIGHTS; i++) {
                         Light *light = lights[i];
                         ray->set(light->x - nearest_result->x, light->y - nearest_result->y, light->z - nearest_result->z);
+                        double max_dist = ray->lengthSquared();
                         ray->normalize();
                         bool found = false;
                         for (int i = 0; i < NUM_OBJECTS; i++) {
                             if (objects[i] == nearest_obj) {
                                 continue;
                             }
-                            if (objects[i]->intersect(nearest_result, ray, result, normal)) {-
+                            if (objects[i]->intersect(nearest_result, ray, result, normal)) {
+                                double dist = (result->x - nearest_result->x) * (result->x - nearest_result->x);
+                                dist += (result->y - nearest_result->y) * (result->y - nearest_result->y);
+                                dist += (result->z - nearest_result->z) * (result->z - nearest_result->z);
+                                if (dist > max_dist) {
+                                    continue;
+                                }
                                 // Expand: light radius for soft shadows
                                 // Expand: transparent or semi-transparent materials
                                 found = true;
@@ -406,7 +461,7 @@ void main() {\n\
                         }
                         lights_visible[i] = !found;
                     }
-                    float intensity = AMBIENT_REFLECTION_CONSTANT;
+                    double intensity = AMBIENT_REFLECTION_CONSTANT;
                     for (int i = 0; i < NUM_LIGHTS; i++) {
                         if (!lights_visible[i]) {
                             continue;
@@ -415,21 +470,21 @@ void main() {\n\
                         light_dir->set(light->x - nearest_result->x, light->y - nearest_result->y, light->z - nearest_result->z);
                         light_dir->normalize();
                         // Expand: attenuation radius for light
-                        float d = nearest_normal->dot(light_dir);
+                        double d = nearest_normal->dot(light_dir);
                         if (d <= 0) {
                             continue;
                         }
                         intensity += light->intensity * d * DIFFUSE_REFLECTION_CONSTANT;
-                        float ref = 2 * (-light_dir->x * nearest_normal->x + -light_dir->y * nearest_normal->y + -light_dir->z * nearest_normal->z);
+                        double ref = 2 * (-light_dir->x * nearest_normal->x + -light_dir->y * nearest_normal->y + -light_dir->z * nearest_normal->z);
                         Vec3 r(-light_dir->x - ref * nearest_normal->x, -light_dir->y - ref * nearest_normal->y, -light_dir->z - ref * nearest_normal->z);
                         r.normalize();
                         Vec3 v(camera->x - result->x, camera->y - result->y, camera->z - result->z);
                         v.normalize();
-                        float sp = r.dot(&v);
+                        double sp = r.dot(&v);
                         if (sp <= 0) {
                             continue;
                         }
-                        float spec = SPECULAR_REFLECTION_CONSTANT * std::pow(sp, nearest_obj->shiny);
+                        double spec = SPECULAR_REFLECTION_CONSTANT * std::pow(sp, nearest_obj->shiny);
                         intensity += light->intensity * spec;
                         // Expand: colored lighting
                     }
@@ -447,7 +502,7 @@ void main() {\n\
         }
 
         glBindTexture(GL_TEXTURE_2D, tex);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1280, 720, 0, GL_RGBA, GL_UNSIGNED_BYTE, pane);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1280, 720, 0, GL_BGRA, GL_UNSIGNED_BYTE, pane);
         printf("Starting loop\n");
         while (!glfwWindowShouldClose(window)) {
 
