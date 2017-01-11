@@ -5,6 +5,7 @@
 #include <cstring>
 #include <cmath>
 #include <algorithm>
+#include <random>
 
 #ifdef WINDOWS
 #include <windows.h>
@@ -17,35 +18,29 @@
 
 namespace raytrace {
 
+    // Trivial vertex and fragment shaders to render the scene pane onto the window
     const char *vertex_shader = "\
 #version 330 core \n\
-\n\
 in vec4 position;\n\
 in vec2 texture;\n\
-\n\
 out vec2 texture_pos;\n\
-\n\
 uniform mat4 view_transform;\n\
-\n\
 void main() {\n\
-    gl_Position =  view_transform * position;\n\
+    gl_Position = view_transform * position;\n\
     texture_pos = texture;\n\
 }\n\
 ";
     const char *fragment_shader = "\n\
 #version 330 core\n\
-\n\
 in vec2 texture_pos;\n\
-\n\
 out vec4 color;\n\
-\n\
 uniform sampler2D texture_sampler;\n\
-\n\
 void main() {\n\
-    color = texture( texture_sampler, texture_pos );\n\
+    color = texture(texture_sampler, texture_pos);\n\
 }\n\
 ";
 
+    // Loads our trivial vertex and fragment shaders and returns the program id to the given ptr.
     void loadShaders(uint32 *result_id) {
         GLuint vs_id = glCreateShader(GL_VERTEX_SHADER);
         GLuint fs_id = glCreateShader(GL_FRAGMENT_SHADER);
@@ -105,6 +100,8 @@ void main() {\n\
         *result_id = p_id;
     }
 
+    // For debugging the scene this returns the pixel position of a mouse click so that
+    // it is easier to set a break point for that pixel
     void onMouseClick(GLFWwindow *window, int button, int action, int mods) {
         if (action == GLFW_PRESS && button == GLFW_MOUSE_BUTTON_1) {
             double x, y;
@@ -113,6 +110,7 @@ void main() {\n\
         }
     }
 
+    // A simple 3d vector of 3 doubles
     class Vec3 {
     public:
         Vec3(double x0, double y0, double z0) {
@@ -150,10 +148,15 @@ void main() {\n\
             return x * ox + y * oy + z * oz;
         }
 
+        double distSquared(Vec3 *o) {
+            return (x - o->x) * (x - o->x) + (y - o->y) * (y - o->y) + (z - o->z) * (z - o->z);
+        }
+
         double x, y, z;
 
     };
 
+    // An abstract class for an object in the scene
     class SceneObject {
     public:
 
@@ -162,8 +165,12 @@ void main() {\n\
         double x, y, z;
         uint32 color;
         double shiny;
+
+        float d_red, d_green, d_blue;
+        float s_red, s_green, s_blue;
     };
 
+    // A spherical object in the scene
     class SphereObject : public SceneObject {
     public:
         SphereObject(double x0, double y0, double z0, double r0, uint32 col, double s) {
@@ -203,6 +210,7 @@ void main() {\n\
         float r;
     };
 
+    // A planar object, although a litle specialized to create the walls of a cornell box
     class PlaneObject : public SceneObject {
     public:
         PlaneObject(double x0, double y0, double z0, uint32 col, float s) {
@@ -271,21 +279,31 @@ void main() {\n\
 
     };
 
-    class Light {
-    public:
-        Light(float x0, float y0, float z0, float i) {
-            x = x0;
-            y = y0;
-            z = z0;
-            intensity = i;
-        }
-
-        float x, y, z;
-        float intensity;
+    enum Axis {
+        X_AXIS,
+        Y_AXIS,
+        Z_AXIS,
     };
 
+    struct photon {
+        float x, y, z;
+        char power[4];
+        char phi, theta;
+        short flags;
+    };
+
+    void makeTree(photon** points, int points_size, photon** tree, int node, Axis axis, photon **x_sorted, photon** y_sorted, photon **z_sorted) {
+        photon *median = nullptr;
+        if(axis == X_AXIS) {
+
+        } else if (axis == Y_AXIS) {
+
+        } else {
+
+        }
+    }
+
     void run() {
-        printf("Starting\n");
         if (!glfwInit()) {
             fprintf(stderr, "Failed to initialize GLFW\n");
             return;
@@ -294,10 +312,10 @@ void main() {\n\
         glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
         glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
         glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-        printf("Making window\n");
+        glfwWindowHint(GLFW_RESIZABLE, GL_FALSE);
+        // Create the window
         GLFWwindow *window = glfwCreateWindow(1280, 720, "Raytrace", NULL, NULL);
         glfwMakeContextCurrent(window);
-        glfwSetWindowAspectRatio(window, 16, 9);
         glewExperimental = true;
         if (glewInit() != GLEW_OK) {
             fprintf(stderr, "Failed to initialize GLEW\n");
@@ -305,14 +323,13 @@ void main() {\n\
             return;
         }
         glfwSwapInterval(1);
-        glEnable(GL_BLEND);
+        glDisable(GL_BLEND);
         glDisable(GL_DEPTH_TEST);
         glDisable(GL_CULL_FACE);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        glClearColor(0, 0, 1, 1);
+        // a nice hot pink so we know if we're not drawing properly
+        glClearColor(1, 0, 1, 1);
         glViewport(0, 0, 1280, 720);
 
-        printf("Loading shaders\n");
         uint32 pid;
         loadShaders(&pid);
         if (pid == 0) {
@@ -321,6 +338,7 @@ void main() {\n\
         }
         uint32 matrix_location = glGetUniformLocation(pid, "view_transform");
         uint32 texture_location = glGetUniformLocation(pid, "texture_sampler");
+        // Setup a simple orthographic projection matrix
         glm::mat4 projection_matrix = glm::ortho(0.0f, 1280.0f, 0.0f, 720.0f, 0.0f, 100.0f);
         glm::mat4 view_matrix = glm::lookAt(glm::vec3(0, 0, 4), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
         glm::mat4 combined_matrix = projection_matrix * view_matrix;
@@ -330,7 +348,6 @@ void main() {\n\
         glActiveTexture(GL_TEXTURE0);
         glUniform1i(texture_location, 0);
 
-        printf("Creating VBOs\n");
         uint32 vao;
         uint32 vbo;
         uint32 vboi;
@@ -339,8 +356,6 @@ void main() {\n\
         glBindVertexArray(vao);
         glEnableVertexAttribArray(0);
         glEnableVertexAttribArray(1);
-        glEnableVertexAttribArray(2);
-        glEnableVertexAttribArray(3);
 
         glGenBuffers(1, &vbo);
         glBindBuffer(GL_ARRAY_BUFFER, vbo);
@@ -351,7 +366,6 @@ void main() {\n\
         glBindBuffer(GL_ARRAY_BUFFER, 0);
         glGenBuffers(1, &vboi);
 
-        printf("Creating texture\n");
         uint32 tex;
         glGenTextures(1, &tex);
         glBindTexture(GL_TEXTURE_2D, tex);
@@ -360,7 +374,6 @@ void main() {\n\
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 
-        printf("Creating vertex + index data\n");
         float vertex_buffer[24] = {0, 720, 0, 1, 0, 1,
             0, 0, 0, 1, 0, 0,
             1280, 0, 0, 1, 1, 0,
@@ -379,10 +392,15 @@ void main() {\n\
 
         glfwSetMouseButtonCallback(window, onMouseClick);
 
+        // Rendering constants
 #define AMBIENT_REFLECTION_CONSTANT 0.03f
 #define DIFFUSE_REFLECTION_CONSTANT 0.4f
 #define SPECULAR_REFLECTION_CONSTANT 0.3f
 
+#define NUM_PHOTONS 16
+#define LIGHT_POWER 1
+
+        // Setup our cornell box
 #define NUM_OBJECTS 7
         SceneObject *objects[NUM_OBJECTS];
         objects[0] = new PlaneObject(0, -5, 0, 0xFFDDDDDD, 10);
@@ -393,117 +411,154 @@ void main() {\n\
         objects[5] = new SphereObject(2, -3.5, 3, 1.5, 0xFFFFFF00, 25);
         objects[6] = new SphereObject(-2, -3.5, 5, 1.5, 0xFF00FFFF, 40);
 
-#define NUM_LIGHTS 1
-        Light *lights[NUM_LIGHTS];
-        lights[0] = new Light(0, 4.5, 2.5, 0.95);
 
-        bool lights_visible[NUM_LIGHTS];
-        uint32 *pane = new uint32[1280 * 720];
-        Vec3 *ray = new Vec3(0, 0, 0);
-        Vec3 *result = new Vec3(0, 0, 0);
-        Vec3 *normal = new Vec3(0, 0, 0);
-        Vec3 *camera = new Vec3(0, 0, -12);
+        // photon mapping
+        // Based on "A Practical Guide to Global Illumination using Photon Maps" from Siggraph 2000
+        // https://graphics.stanford.edu/courses/cs348b-00/course8.pdf
+
+        std::uniform_real_distribution<double> unif(0, 1);
+        std::default_random_engine re;
+
+        Vec3 ray(0, 0, 0);
+        Vec3 result(0, 0, 0);
+        Vec3 normal(0, 0, 0);
+        Vec3 ray_source(0, 0, 0);
         float nearest = 4096 * 4096;
         SceneObject *nearest_obj = nullptr;
-        Vec3 *nearest_result = new Vec3(0, 0, 0);
-        Vec3 *nearest_normal = new Vec3(0, 0, 0);
+        Vec3 nearest_result(0, 0, 0);
+        Vec3 nearest_normal(0, 0, 0);
+
+        // We emit a number of photons from each area of the square light source
+        // for each grid sqare of the light we emit 1 photon
+        // @TODO: the positions should be quasi-randomized to be fairly uniform but not perfectly uniform
+
+        // this array is expanded as needed as we do not know how many photon interactions there will be
+        int photon_index = 0;
+        int photon_size = NUM_PHOTONS;
+        photon **photons = new photon*[NUM_PHOTONS];
+        while (photon_index < photon_size) {
+            double x0 = unif(re) * 2 - 1;
+            double z0 = unif(re) * 2 + 3;
+            double y0 = 5;
+            ray_source.set(x0, y0, z0);
+            // direction based on cosine distribution
+            // formula for distribution from https://www.particleincell.com/2015/cosine-distribution/
+            double sin_theta = sqrt(unif(re));
+            double cos_theta = sqrt(1 - sin_theta*sin_theta);
+            double psi = unif(re) * 6.2831853;
+            Vec3 light_dir(sin_theta * cos(psi), -cos_theta, sin_theta * sin(psi));
+            light_dir.normalize();
+
+
+            // trace photon
+
+            nearest = 1024 * 1024;
+            nearest_obj = nullptr;
+            for (int i = 0; i < NUM_OBJECTS; i++) {
+                if (objects[i]->intersect(&ray_source, &light_dir, &result, &normal)) {
+                    double dist = result.distSquared(&ray_source);
+                    if (dist < nearest) {
+                        nearest = dist;
+                        nearest_obj = objects[i];
+                        nearest_result.set(result.x, result.y, result.z);
+                        nearest_normal.set(normal.x, normal.y, normal.z);
+                    }
+                }
+            }
+            if (nearest_obj == nullptr) {
+                continue;
+            }
+            // we have a hit time to decide whether to reflect, absorb, or transmit
+            double chance = unif(re);
+            // @TODO use the diffuse and specular reflection values for each color band pg. 17
+            // @TODO also support transmission
+            if (chance < 0) {
+                // diffuse reflection
+            } else if (chance < 0.01) {
+                // specular reflection
+            } else {
+                // absorption
+                photon *next = new photon;
+                next->x = nearest_result.x;
+                next->y = nearest_result.y;
+                next->z = nearest_result.z;
+                printf("photon %.1f %.1f %.1f\n", next->x, next->y, next->z);
+
+                photons[photon_index++] = next;
+            }
+        }
+
+        int index = 0;
+        photon **x_sorted = new photon*[NUM_PHOTONS];
+        for (int i = 0; i < NUM_PHOTONS; i++) {
+            photon *next = photons[i];
+            int j = 0;
+            for (; j < index; j++) {
+                if (x_sorted[j]->x >= next->x) {
+                    break;
+                }
+            }
+            photon *last = x_sorted[j];
+            x_sorted[j] = next;
+            if (j < index) {
+                for (; j < index; j++) {
+                    photon *n = x_sorted[j + 1];
+                    x_sorted[j + 1] = last;
+                    last = n;
+                }
+            }
+            index++;
+        }
+        index = 0;
+        photon **y_sorted = new photon*[NUM_PHOTONS];
+        photon **z_sorted = new photon*[NUM_PHOTONS];
+        photon **photon_tree = new photon*[NUM_PHOTONS];
+        makeTree(photons, NUM_PHOTONS, photon_tree, 0);
+
+        // rendering
+
+        ray_source.set(0, 0, -12);
+        uint32 *pane = new uint32[1280 * 720];
         Vec3 *light_dir = new Vec3(0, 0, 0);
         for (int x = 0; x < 1280; x++) {
-            double x0 = (x - 640) / 64.0 - camera->x;
+            double x0 = (x - 640) / 64.0 - ray_source.x;
             for (int y = 0; y < 720; y++) {
-                double y0 = (y - 360) / 64.0 - camera->y;
+                double y0 = (y - 360) / 64.0 - ray_source.y;
                 nearest = 1024 * 1024;
                 nearest_obj = nullptr;
                 for (int i = 0; i < NUM_OBJECTS; i++) {
-                    ray->set(x0, y0, -camera->z);
-                    ray->normalize();
-                    if (objects[i]->intersect(camera, ray, result, normal)) {
+                    ray.set(x0, y0, -ray_source.z);
+                    ray.normalize();
+                    if (objects[i]->intersect(&ray_source, &ray, &result, &normal)) {
                         // Expand: bump mapping
-                        double dist = (result->x - camera->x) * (result->x - camera->x);
-                        dist += (result->y - camera->y) * (result->y - camera->y);
-                        dist += (result->z - camera->z) * (result->z - camera->z);
+                        double dist = (result.x - ray_source.x) * (result.x - ray_source.x);
+                        dist += (result.y - ray_source.y) * (result.y - ray_source.y);
+                        dist += (result.z - ray_source.z) * (result.z - ray_source.z);
                         if (dist < nearest) {
                             nearest = dist;
                             nearest_obj = objects[i];
-                            nearest_result->set(result->x, result->y, result->z);
-                            nearest_normal->set(normal->x, normal->y, normal->z);
+                            nearest_result.set(result.x, result.y, result.z);
+                            nearest_normal.set(normal.x, normal.y, normal.z);
                         }
                     }
                 }
                 if (nearest_obj == nullptr) {
                     pane[x + y * 1280] = 0xFF000000;
                 } else {
-                    if (x == 492 && y == 453) {
-                        printf("");
-                    }
-                    for (int i = 0; i < NUM_LIGHTS; i++) {
-                        Light *light = lights[i];
-                        ray->set(light->x - nearest_result->x, light->y - nearest_result->y, light->z - nearest_result->z);
-                        double max_dist = ray->lengthSquared();
-                        ray->normalize();
-                        bool found = false;
-                        for (int i = 0; i < NUM_OBJECTS; i++) {
-                            if (objects[i] == nearest_obj) {
-                                continue;
-                            }
-                            if (objects[i]->intersect(nearest_result, ray, result, normal)) {
-                                double dist = (result->x - nearest_result->x) * (result->x - nearest_result->x);
-                                dist += (result->y - nearest_result->y) * (result->y - nearest_result->y);
-                                dist += (result->z - nearest_result->z) * (result->z - nearest_result->z);
-                                if (dist > max_dist) {
-                                    continue;
-                                }
-                                // Expand: light radius for soft shadows
-                                // Expand: transparent or semi-transparent materials
-                                found = true;
-                                break;
-                            }
-                        }
-                        lights_visible[i] = !found;
-                    }
-                    double intensity = AMBIENT_REFLECTION_CONSTANT;
-                    for (int i = 0; i < NUM_LIGHTS; i++) {
-                        if (!lights_visible[i]) {
-                            continue;
-                        }
-                        Light *light = lights[i];
-                        light_dir->set(light->x - nearest_result->x, light->y - nearest_result->y, light->z - nearest_result->z);
-                        light_dir->normalize();
-                        // Expand: attenuation radius for light
-                        double d = nearest_normal->dot(light_dir);
-                        if (d <= 0) {
-                            continue;
-                        }
-                        intensity += light->intensity * d * DIFFUSE_REFLECTION_CONSTANT;
-                        double ref = 2 * (-light_dir->x * nearest_normal->x + -light_dir->y * nearest_normal->y + -light_dir->z * nearest_normal->z);
-                        Vec3 r(-light_dir->x - ref * nearest_normal->x, -light_dir->y - ref * nearest_normal->y, -light_dir->z - ref * nearest_normal->z);
-                        r.normalize();
-                        Vec3 v(camera->x - result->x, camera->y - result->y, camera->z - result->z);
-                        v.normalize();
-                        double sp = r.dot(&v);
-                        if (sp <= 0) {
-                            continue;
-                        }
-                        double spec = SPECULAR_REFLECTION_CONSTANT * std::pow(sp, nearest_obj->shiny);
-                        intensity += light->intensity * spec;
-                        // Expand: colored lighting
-                    }
-                    // Expand: check reflectivity of material and compute bounce if needed
-                    int32 alpha = (nearest_obj->color >> 24) & 0xFF;
-                    int32 red = (nearest_obj->color >> 16) & 0xFF;
-                    red = (int) floor(red * intensity);
-                    int32 green = (nearest_obj->color >> 8) & 0xFF;
-                    green = (int) floor(green * intensity);
-                    int32 blue = (nearest_obj->color) & 0xFF;
-                    blue = (int) floor(blue * intensity);
-                    pane[x + y * 1280] = (alpha << 24) | (red << 16) | (green << 8) | blue;
+                    pane[x + y * 1280] = nearest_obj->color;
                 }
             }
         }
 
+        // Cleanup
+        for (int i = 0; i < NUM_OBJECTS; i++) {
+            delete objects[i];
+        }
+
+        // Upload our pane to our texture
         glBindTexture(GL_TEXTURE_2D, tex);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1280, 720, 0, GL_BGRA, GL_UNSIGNED_BYTE, pane);
-        printf("Starting loop\n");
+
         while (!glfwWindowShouldClose(window)) {
 
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -528,7 +583,6 @@ void main() {\n\
 
         }
 
-        printf("Terminating\n");
         glDeleteBuffers(1, &vao);
         glDeleteBuffers(1, &vbo);
         glDeleteBuffers(1, &vboi);
