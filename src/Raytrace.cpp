@@ -125,6 +125,12 @@ void main() {\n\
             z = z0;
         }
 
+        void add(double x0, double y0, double z0) {
+            x += x0;
+            y += y0;
+            z += z0;
+        }
+
         double lengthSquared() {
             return x * x + y * y + z * z;
         }
@@ -150,6 +156,10 @@ void main() {\n\
 
         double distSquared(Vec3 *o) {
             return (x - o->x) * (x - o->x) + (y - o->y) * (y - o->y) + (z - o->z) * (z - o->z);
+        }
+
+        double distSquared(float ox, float oy, float oz) {
+            return (x - ox) * (x - ox) + (y - oy) * (y - oy) + (z - oz) * (z - oz);
         }
 
         double x, y, z;
@@ -287,21 +297,9 @@ void main() {\n\
 
     struct photon {
         float x, y, z;
-        char power[4];
-        char phi, theta;
-        short flags;
+        unsigned char power[4];
+        float dx, dy, dz;
     };
-
-    void makeTree(photon** points, int points_size, photon** tree, int node, Axis axis, photon **x_sorted, photon** y_sorted, photon **z_sorted) {
-        photon *median = nullptr;
-        if(axis == X_AXIS) {
-
-        } else if (axis == Y_AXIS) {
-
-        } else {
-
-        }
-    }
 
     void run() {
         if (!glfwInit()) {
@@ -397,8 +395,12 @@ void main() {\n\
 #define DIFFUSE_REFLECTION_CONSTANT 0.4f
 #define SPECULAR_REFLECTION_CONSTANT 0.3f
 
-#define NUM_PHOTONS 16
+#define NUM_PHOTONS 4096 * 1
 #define LIGHT_POWER 1
+#define MAX_PHOTON_RADIUS 0.3
+#define PHOTONS_IN_ESTIMATE 10
+
+#define PHOTON_FLAG_DIRECT 0x8
 
         // Setup our cornell box
 #define NUM_OBJECTS 7
@@ -433,87 +435,142 @@ void main() {\n\
         // @TODO: the positions should be quasi-randomized to be fairly uniform but not perfectly uniform
 
         // this array is expanded as needed as we do not know how many photon interactions there will be
-        int photon_index = 0;
-        int photon_size = NUM_PHOTONS;
-        photon **photons = new photon*[NUM_PHOTONS];
-        while (photon_index < photon_size) {
-            double x0 = unif(re) * 2 - 1;
-            double z0 = unif(re) * 2 + 3;
-            double y0 = 5;
-            ray_source.set(x0, y0, z0);
-            // direction based on cosine distribution
-            // formula for distribution from https://www.particleincell.com/2015/cosine-distribution/
-            double sin_theta = sqrt(unif(re));
-            double cos_theta = sqrt(1 - sin_theta*sin_theta);
-            double psi = unif(re) * 6.2831853;
-            Vec3 light_dir(sin_theta * cos(psi), -cos_theta, sin_theta * sin(psi));
-            light_dir.normalize();
+        photon ***photon_buckets = new photon**[16 * 16 * 16];
+        Vec3 min(1000, 1000, 1000);
+        Vec3 max(-1000, -1000, -1000);
+        double x_size, y_size, z_size;
+        int bucket_sizes[16 * 16 * 16];
+        {
+            int photon_index = 0;
+            int photon_size = NUM_PHOTONS;
+            photon **photons = new photon*[NUM_PHOTONS];
+            while (photon_index < photon_size) {
+                double x0 = unif(re) * 2 - 1;
+                double z0 = unif(re) * 2 + 3;
+                double y0 = 4.95;
+                ray_source.set(x0, y0, z0);
+                // direction based on cosine distribution
+                // formula for distribution from https://www.particleincell.com/2015/cosine-distribution/
+                double sin_theta = sqrt(unif(re));
+                double cos_theta = sqrt(1 - sin_theta*sin_theta);
+                double psi = unif(re) * 6.2831853;
+                Vec3 light_dir(sin_theta * cos(psi), -cos_theta, sin_theta * sin(psi));
+                light_dir.normalize();
+
+                // trace photon
+
+                nearest = 1024 * 1024;
+                nearest_obj = nullptr;
+                for (int i = 0; i < NUM_OBJECTS; i++) {
+                    if (objects[i]->intersect(&ray_source, &light_dir, &result, &normal)) {
+                        double dist = result.distSquared(&ray_source);
+                        if (dist < nearest) {
+                            nearest = dist;
+                            nearest_obj = objects[i];
+                            nearest_result.set(result.x, result.y, result.z);
+                            nearest_normal.set(normal.x, normal.y, normal.z);
+                        }
+                    }
+                }
+                if (nearest_obj == nullptr) {
+                    continue;
+                }
+                // we have a hit time to decide whether to reflect, absorb, or transmit
+                double chance = unif(re);
+                // @TODO use the diffuse and specular reflection values for each color band pg. 17
+                // @TODO also support transmission
+                if (chance < 0) {
+                    // diffuse reflection
+                } else if (chance < 0.01) {
+                    // specular reflection
+                } else {
+                    // absorption
+                    photon *next = new photon;
+                    next->x = nearest_result.x;
+                    next->y = nearest_result.y;
+                    next->z = nearest_result.z;
+                    next->power[0] = 255;
+                    next->power[1] = 255;
+                    next->power[2] = 255;
+                    next->power[3] = 255;
+                    next->dx = light_dir.x;
+                    next->dy = light_dir.y;
+                    next->dz = light_dir.z;
+                    photons[photon_index++] = next;
 
 
-            // trace photon
+                    if (next->x < min.x) {
+                        min.x = next->x;
+                    }
+                    if (next->x > max.x) {
+                        max.x = next->x;
+                    }
+                    if (next->y < min.y) {
+                        min.y = next->y;
+                    }
+                    if (next->y > max.y) {
+                        max.y = next->y;
+                    }
+                    if (next->z < min.z) {
+                        min.z = next->z;
+                    }
+                    if (next->z > max.z) {
+                        max.z = next->z;
+                    }
 
-            nearest = 1024 * 1024;
-            nearest_obj = nullptr;
-            for (int i = 0; i < NUM_OBJECTS; i++) {
-                if (objects[i]->intersect(&ray_source, &light_dir, &result, &normal)) {
-                    double dist = result.distSquared(&ray_source);
-                    if (dist < nearest) {
-                        nearest = dist;
-                        nearest_obj = objects[i];
-                        nearest_result.set(result.x, result.y, result.z);
-                        nearest_normal.set(normal.x, normal.y, normal.z);
+                }
+            }
+
+            // make sure our floats fit into buckets even after inaccuracies
+            max.add(0.01, 0.01, 0.01);
+
+            // process photons
+            x_size = (max.x - min.x) / 16.0;
+            y_size = (max.y - min.y) / 16.0;
+            z_size = (max.z - min.z) / 16.0;
+
+            int bucket_indices[16 * 16 * 16];
+            for (int x = 0; x < 16; x++) {
+                for (int y = 0; y < 16; y++) {
+                    for (int z = 0; z < 16; z++) {
+                        bucket_sizes[x + y * 16 + z * 256] = 0;
+                        bucket_indices[x + y * 16 + z * 256] = 0;
                     }
                 }
             }
-            if (nearest_obj == nullptr) {
-                continue;
-            }
-            // we have a hit time to decide whether to reflect, absorb, or transmit
-            double chance = unif(re);
-            // @TODO use the diffuse and specular reflection values for each color band pg. 17
-            // @TODO also support transmission
-            if (chance < 0) {
-                // diffuse reflection
-            } else if (chance < 0.01) {
-                // specular reflection
-            } else {
-                // absorption
-                photon *next = new photon;
-                next->x = nearest_result.x;
-                next->y = nearest_result.y;
-                next->z = nearest_result.z;
-                printf("photon %.1f %.1f %.1f\n", next->x, next->y, next->z);
 
-                photons[photon_index++] = next;
+            for (int i = 0; i < NUM_PHOTONS; i++) {
+                photon *ph = photons[i];
+                int xp = (int) floor((ph->x - min.x) / x_size);
+                int yp = (int) floor((ph->y - min.y) / y_size);
+                int zp = (int) floor((ph->z - min.z) / z_size);
+                int index = xp + yp * 16 + zp * 256;
+                bucket_sizes[index]++;
             }
-        }
 
-        int index = 0;
-        photon **x_sorted = new photon*[NUM_PHOTONS];
-        for (int i = 0; i < NUM_PHOTONS; i++) {
-            photon *next = photons[i];
-            int j = 0;
-            for (; j < index; j++) {
-                if (x_sorted[j]->x >= next->x) {
-                    break;
+            for (int x = 0; x < 16; x++) {
+                for (int y = 0; y < 16; y++) {
+                    for (int z = 0; z < 16; z++) {
+                        if (bucket_sizes[x + y * 16 + z * 256] > 0) {
+                            photon_buckets[x + y * 16 + z * 256] = new photon*[bucket_sizes[x + y * 16 + z * 256]];
+                        } else {
+                            photon_buckets[x + y * 16 + z * 256] = nullptr;
+                        }
+                    }
                 }
             }
-            photon *last = x_sorted[j];
-            x_sorted[j] = next;
-            if (j < index) {
-                for (; j < index; j++) {
-                    photon *n = x_sorted[j + 1];
-                    x_sorted[j + 1] = last;
-                    last = n;
-                }
+            for (int i = 0; i < NUM_PHOTONS; i++) {
+                photon *ph = photons[i];
+                int xp = (int) floor((ph->x - min.x) / x_size);
+                int yp = (int) floor((ph->y - min.y) / y_size);
+                int zp = (int) floor((ph->z - min.z) / z_size);
+                int index = xp + yp * 16 + zp * 256;
+                photon_buckets[index][bucket_indices[index]] = ph;
+                bucket_indices[index]++;
             }
-            index++;
+
+            delete[] photons;
         }
-        index = 0;
-        photon **y_sorted = new photon*[NUM_PHOTONS];
-        photon **z_sorted = new photon*[NUM_PHOTONS];
-        photon **photon_tree = new photon*[NUM_PHOTONS];
-        makeTree(photons, NUM_PHOTONS, photon_tree, 0);
 
         // rendering
 
@@ -545,7 +602,267 @@ void main() {\n\
                 if (nearest_obj == nullptr) {
                     pane[x + y * 1280] = 0xFF000000;
                 } else {
-                    pane[x + y * 1280] = nearest_obj->color;
+                    photon* nearest_photons[PHOTONS_IN_ESTIMATE];
+                    double photon_distances[PHOTONS_IN_ESTIMATE];
+                    for (int i = 0; i < PHOTONS_IN_ESTIMATE; i++) {
+                        nearest_photons[i] = nullptr;
+                        photon_distances[i] = 0;
+                    }
+                    if (x == 891 && y == 497) {
+                        printf("");
+                    }
+                    photon_distances[PHOTONS_IN_ESTIMATE - 1] = MAX_PHOTON_RADIUS * MAX_PHOTON_RADIUS;
+                    double xpd = abs((nearest_result.x - min.x) / (max.x - min.x) - 0.5);
+                    int xp = (int) floor((nearest_result.x - min.x) / x_size);
+                    if (xp < 0) xp = 0;
+                    if (xp > 15) xp = 15;
+                    double ypd = abs((nearest_result.y - min.y) / (max.y - min.y) - 0.5);
+                    int yp = (int) floor((nearest_result.y - min.y) / y_size);
+                    if (yp < 0) yp = 0;
+                    if (yp > 15) yp = 15;
+                    double zpd = abs((nearest_result.z - min.z) / (max.z - min.z) - 0.5);
+                    int zp = (int) floor((nearest_result.z - min.z) / z_size);
+                    if (zp < 0) zp = 0;
+                    if (zp > 15) zp = 15;
+                    for (int i = 0; i < bucket_sizes[xp + yp * 16 + zp * 256]; i++) {
+                        photon *ph = photon_buckets[xp + yp * 16 + zp * 256][i];
+                        double ph_dist = nearest_result.distSquared(ph->x, ph->y, ph->z);
+                        if (ph_dist < photon_distances[PHOTONS_IN_ESTIMATE - 1]) {
+                            for (int o = 0; o < PHOTONS_IN_ESTIMATE; o++) {
+                                if (nearest_photons[o] == nullptr) {
+                                    nearest_photons[o] = ph;
+                                    photon_distances[o] = ph_dist;
+                                    break;
+                                } else if (photon_distances[o] > ph_dist) {
+                                    for (int j = PHOTONS_IN_ESTIMATE - 2; j >= o; j--) {
+                                        nearest_photons[j + 1] = nearest_photons[j];
+                                        photon_distances[j + 1] = photon_distances[j];
+                                    }
+                                    nearest_photons[o] = ph;
+                                    photon_distances[o] = ph_dist;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    Axis ordering[3];
+                    if (xpd > ypd) {
+                        if (xpd > zpd) {
+                            ordering[0] = X_AXIS;
+                            if (ypd > zpd) {
+                                ordering[1] = Y_AXIS;
+                                ordering[2] = Z_AXIS;
+                            } else {
+                                ordering[1] = Z_AXIS;
+                                ordering[2] = Y_AXIS;
+                            }
+                        } else {
+                            ordering[0] = Z_AXIS;
+                            ordering[1] = X_AXIS;
+                            ordering[2] = Y_AXIS;
+                        }
+                    } else {
+                        if (ypd > zpd) {
+                            ordering[0] = Y_AXIS;
+                            if (xpd > zpd) {
+                                ordering[1] = X_AXIS;
+                                ordering[2] = Z_AXIS;
+                            } else {
+                                ordering[1] = Z_AXIS;
+                                ordering[2] = X_AXIS;
+                            }
+                        } else {
+                            ordering[0] = Z_AXIS;
+                            ordering[1] = Y_AXIS;
+                            ordering[2] = X_AXIS;
+                        }
+                    }
+                    int step = 0;
+                    while (true) {
+                        int oxp = xp;
+                        int oyp = yp;
+                        int ozp = zp;
+                        if (step <= 2) {
+                            Axis next = ordering[step];
+                            double r = MAX_PHOTON_RADIUS;
+                            if (nearest_photons[PHOTONS_IN_ESTIMATE - 1] != nullptr) {
+                                r = sqrt(photon_distances[PHOTONS_IN_ESTIMATE - 1]);
+                            }
+                            if (next == X_AXIS) {
+                                if ((nearest_result.x - min.x + r) / x_size > xp + 1) {
+                                    xp++;
+                                } else if ((nearest_result.x - min.x - r) / x_size < xp) {
+                                    xp--;
+                                } else if (nearest_photons[PHOTONS_IN_ESTIMATE - 1] == nullptr) {
+                                    if ((nearest_result.x - min.x) / x_size > xp + 0.5) {
+                                        xp++;
+                                    } else {
+                                        xp--;
+                                    }
+                                } else {
+                                    break;
+                                }
+                            } else if (next == Y_AXIS) {
+                                if ((nearest_result.y - min.y + r) / y_size > yp + 1) {
+                                    yp++;
+                                } else if ((nearest_result.y - min.y - r) / y_size < yp) {
+                                    yp--;
+                                } else if (nearest_photons[PHOTONS_IN_ESTIMATE - 1] == nullptr) {
+                                    if ((nearest_result.y - min.y) / y_size > yp + 0.5) {
+                                        yp++;
+                                    } else {
+                                        yp--;
+                                    }
+                                } else {
+                                    break;
+                                }
+                            } else if (next == Z_AXIS) {
+                                if ((nearest_result.z - min.z + r) / z_size > zp + 1) {
+                                    zp++;
+                                } else if ((nearest_result.z - min.z - r) / z_size < zp) {
+                                    zp--;
+                                } else if (nearest_photons[PHOTONS_IN_ESTIMATE - 1] == nullptr) {
+                                    if ((nearest_result.z - min.z) / z_size > zp + 0.5) {
+                                        zp++;
+                                    } else {
+                                        zp--;
+                                    }
+                                } else {
+                                    break;
+                                }
+                            }
+                        } else if (step >= 3 && step <= 5) {
+                            double r = MAX_PHOTON_RADIUS;
+                            if (nearest_photons[PHOTONS_IN_ESTIMATE - 1] != nullptr) {
+                                r = sqrt(photon_distances[PHOTONS_IN_ESTIMATE - 1]);
+                            }
+                            Axis nexts[2];
+                            if (step == 3) {
+                                nexts[0] = ordering[0];
+                                nexts[1] = ordering[1];
+                            } else if (step == 4) {
+                                nexts[0] = ordering[1];
+                                nexts[1] = ordering[2];
+                            } else if (step == 5) {
+                                nexts[0] = ordering[0];
+                                nexts[1] = ordering[2];
+                            }
+                            for (int i = 0; i < 2; i++) {
+                                Axis next = nexts[i];
+                                if (next == X_AXIS) {
+                                    if ((nearest_result.x - min.x + r) / x_size > xp + 1) {
+                                        xp++;
+                                    } else if ((nearest_result.x - min.x - r) / x_size < xp) {
+                                        xp--;
+                                    } else if (nearest_photons[PHOTONS_IN_ESTIMATE - 1] == nullptr) {
+                                        if ((nearest_result.x - min.x) / x_size > xp + 0.5) {
+                                            xp++;
+                                        } else {
+                                            xp--;
+                                        }
+                                    } else {
+                                        zp++;
+                                    }
+                                } else if (next == Y_AXIS) {
+                                    if ((nearest_result.y - min.y + r) / y_size > yp + 1) {
+                                        yp++;
+                                    } else if ((nearest_result.y - min.y - r) / y_size < yp) {
+                                        yp--;
+                                    } else if (nearest_photons[PHOTONS_IN_ESTIMATE - 1] == nullptr) {
+                                        if ((nearest_result.y - min.y) / y_size > yp + 0.5) {
+                                            yp++;
+                                        } else {
+                                            yp--;
+                                        }
+                                    } else {
+                                        yp++;
+                                    }
+                                } else if (next == Z_AXIS) {
+                                    if ((nearest_result.z - min.z + r) / z_size > zp + 1) {
+                                        zp++;
+                                    } else if ((nearest_result.z - min.z - r) / z_size < zp) {
+                                        zp--;
+                                    } else if (nearest_photons[PHOTONS_IN_ESTIMATE - 1] == nullptr) {
+                                        if ((nearest_result.z - min.z) / z_size > zp + 0.5) {
+                                            zp++;
+                                        } else {
+                                            zp--;
+                                        }
+                                    } else {
+                                        zp++;
+                                    }
+                                }
+                            }
+                        } else {
+                            break;
+                        }
+                        if (xp > 15 || yp > 15 || zp > 15 || xp < 0 || yp < 0 || zp < 0) {
+                            xp = oxp;
+                            yp = oyp;
+                            zp = ozp;
+                            step++;
+                            continue;
+                        }
+                        for (int i = 0; i < bucket_sizes[xp + yp * 16 + zp * 256]; i++) {
+                            photon *ph = photon_buckets[xp + yp * 16 + zp * 256][i];
+                            double ph_dist = nearest_result.distSquared(ph->x, ph->y, ph->z);
+                            if (ph_dist < photon_distances[PHOTONS_IN_ESTIMATE - 1]) {
+                                for (int o = 0; o < PHOTONS_IN_ESTIMATE; o++) {
+                                    if (nearest_photons[o] == nullptr) {
+                                        nearest_photons[o] = ph;
+                                        photon_distances[o] = ph_dist;
+                                        break;
+                                    } else if (photon_distances[o] > ph_dist) {
+                                        for (int j = PHOTONS_IN_ESTIMATE - 2; j >= o; j--) {
+                                            nearest_photons[j + 1] = nearest_photons[j];
+                                            photon_distances[j + 1] = photon_distances[j];
+                                        }
+                                        nearest_photons[o] = ph;
+                                        photon_distances[o] = ph_dist;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        xp = oxp;
+                        yp = oyp;
+                        zp = ozp;
+                        step++;
+                    }
+                    float intensity = 0.3f;
+                    if (nearest_photons[0] != nullptr) {
+                        double r = 0.2;
+                        for (int i = PHOTONS_IN_ESTIMATE - 1; i >= 0; i--) {
+                            if (nearest_photons[i] != nullptr) {
+                                r = photon_distances[i];
+                                break;
+                            }
+                        }
+                        for (int i = 0; i < PHOTONS_IN_ESTIMATE; i++) {
+                            photon *ph = nearest_photons[i];
+                            if (ph == nullptr) {
+                                break;
+                            }
+                            double d = -nearest_normal.dot(ph->dx, ph->dy, ph->dz);
+                            if (d <= 0) {
+                                continue;
+                            }
+                            intensity += d * (ph->power[0] / 255.0);
+                        }
+                        intensity /= (3.141592653589 * 2 * r);
+                        if (intensity > 1) {
+                            intensity = 1;
+                        }
+                    }
+
+                    int32 alpha = (nearest_obj->color >> 24) & 0xFF;
+                    int32 red = (nearest_obj->color >> 16) & 0xFF;
+                    red = (int) floor(red * intensity);
+                    int32 green = (nearest_obj->color >> 8) & 0xFF;
+                    green = (int) floor(green * intensity);
+                    int32 blue = (nearest_obj->color) & 0xFF;
+                    blue = (int) floor(blue * intensity);
+                    pane[x + y * 1280] = (alpha << 24) | (red << 16) | (green << 8) | blue;
                 }
             }
         }
