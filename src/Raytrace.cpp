@@ -328,7 +328,6 @@ void main() {\n\
     }
 
     photon *findMedianPhoton(photon** photons, int size, Axis axis) {
-        // TODO fix median search
         std::uniform_int_distribution<int> unif(0, size - 1);
         int k = unif(*rand_engine);
         photon *p = photons[k];
@@ -502,13 +501,13 @@ void main() {\n\
         bool side = true;
         float axis_dist;
         if (root->splitting_axis == X_AXIS) {
-            size = target->x <= root->value->x;
+            side = target->x <= root->value->x;
             axis_dist = dx * dx;
         } else if (root->splitting_axis == Y_AXIS) {
-            size = target->y <= root->value->y;
+            side = target->y <= root->value->y;
             axis_dist = dy * dy;
         } else if (root->splitting_axis == Z_AXIS) {
-            size = target->z <= root->value->z;
+            side = target->z <= root->value->z;
             axis_dist = dz * dz;
         }
 
@@ -628,10 +627,10 @@ void main() {\n\
 #define DIFFUSE_REFLECTION_CONSTANT 0.4f
 #define SPECULAR_REFLECTION_CONSTANT 0.3f
 
-#define NUM_PHOTONS 16
+#define NUM_PHOTONS 512
 #define LIGHT_POWER 1
-#define MAX_PHOTON_RADIUS 0.3
-#define PHOTONS_IN_ESTIMATE 10
+#define MAX_PHOTON_RADIUS 0.6
+#define PHOTONS_IN_ESTIMATE 40
 
 #define PHOTON_FLAG_DIRECT 0x8
 
@@ -717,7 +716,7 @@ void main() {\n\
                     next->x = nearest_result.x;
                     next->y = nearest_result.y;
                     next->z = nearest_result.z;
-                    next->power[0] = 255;
+                    next->power[0] = 80;
                     next->power[1] = 255;
                     next->power[2] = 255;
                     next->power[3] = 255;
@@ -725,7 +724,7 @@ void main() {\n\
                     next->dy = light_dir.y;
                     next->dz = light_dir.z;
                     photons[photon_index++] = next;
-                    printf("photon %.1f %.1f %.1f\n", next->x, next->y, next->z);
+                    //printf("photon %.1f %.1f %.1f\n", next->x, next->y, next->z);
                 }
             }
 
@@ -772,13 +771,13 @@ void main() {\n\
                         nearest_photons[i] = nullptr;
                         photon_distances[i] = 0;
                     }
-                    if (x == 896 && y == 243) {
+                    if (x == 907 && y == 289) {
                         printf("");
                     }
                     // int find_nearest_photons(photon **nearest, double *distances, int k, int size, Vec3 *target, kdnode *root, double max_dist)
-                    int found = find_nearest_photons(nearest_photons, photon_distances, PHOTONS_IN_ESTIMATE, 0, &nearest_result, global_tree, 0.2);
+                    int found = find_nearest_photons(nearest_photons, photon_distances, PHOTONS_IN_ESTIMATE, 0, &nearest_result, global_tree, 5);
 
-                    float intensity = 0.3f;
+                    float intensity = 0.0f;
                     if (nearest_photons[0] != nullptr) {
                         double r = photon_distances[0];
                         for (int i = 0; i < found; i++) {
