@@ -328,6 +328,7 @@ void main() {\n\
     }
 
     photon *findMedianPhoton(photon** photons, int size, Axis axis) {
+        // TODO fix median search
         std::uniform_int_distribution<int> unif(0, size - 1);
         int k = unif(*rand_engine);
         photon *p = photons[k];
@@ -448,10 +449,91 @@ void main() {\n\
         return node;
     }
 
+    void insert(photon **nearest, double *distances, int k, int size, photon *next, double dist) {
+        int i = 0;
+        for (; i < size; i++) {
+            if (distances[i] < dist) {
+                break;
+            }
+        }
+        if (size < k) {
+            // push existing nodes backwards
+            for (int j = size; j > i; j--) {
+                nearest[j] = nearest[j - 1];
+                distances[j] = distances[j - 1];
+            }
+            nearest[i] = next;
+            distances[i] = dist;
+        } else if(i == size) {
+            // otherwise we're going to evict the farthest node
+            for (int j = 0; j < i - 1; j++) {
+                nearest[j] = nearest[j + 1];
+                distances[j] = distances[j + 1];
+            }
+            nearest[i - 1] = next;
+            distances[i - 1] = dist;
+        } else {
+            // otherwise we're going to evict the farthest node
+            for (int j = 0; j < i; j++) {
+                nearest[j] = nearest[j + 1];
+                distances[j] = distances[j + 1];
+            }
+            nearest[i] = next;
+            distances[i] = dist;
+        }
+    }
+
+    int find_nearest_photons(photon **nearest, double *distances, int k, int size, Vec3 *target, kdnode *root, double max_dist) {
+        float dx = root->value->x - target->x;
+        float dy = root->value->y - target->y;
+        float dz = root->value->z - target->z;
+        double dist = dx * dx + dy * dy + dz * dz;
+        if (dist < max_dist) {
+            if (size < k) {
+                insert(nearest, distances, k, size, root->value, dist);
+                size++;
+            } else if (dist < distances[0]) {
+                insert(nearest, distances, k, size, root->value, dist);
+            }
+        }
+
+        // determine which side of the splitting plane we are on
+        // true is positive side
+        bool side = true;
+        float axis_dist;
+        if (root->splitting_axis == X_AXIS) {
+            size = target->x <= root->value->x;
+            axis_dist = dx * dx;
+        } else if (root->splitting_axis == Y_AXIS) {
+            size = target->y <= root->value->y;
+            axis_dist = dy * dy;
+        } else if (root->splitting_axis == Z_AXIS) {
+            size = target->z <= root->value->z;
+            axis_dist = dz * dz;
+        }
+
+        // recurse into that side first
+        kdnode *side_node = side ? root->left : root->right;
+        if (side_node != nullptr) {
+            size = find_nearest_photons(nearest, distances, k, size, target, side_node, max_dist);
+        }
+
+        // check if the current max distance is larger than the distance from the target to the splitting plane
+        if (size == 0 || distances[0] > axis_dist) {
+            // if yes then recurse into that side as well
+            side_node = !side ? root->left : root->right;
+            if (side_node != nullptr) {
+                size = find_nearest_photons(nearest, distances, k, size, target, side_node, max_dist);
+            }
+        }
+        
+        return size;
+    }
+
     void run() {
         // Seed the random engine with the current epoch tick
-        long long time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-        rand_engine->seed(time);
+        //long long time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+        rand_engine->seed(0);
         // Initialize opengl
         if (!glfwInit()) {
             fprintf(stderr, "Failed to initialize GLFW\n");
@@ -690,18 +772,16 @@ void main() {\n\
                         nearest_photons[i] = nullptr;
                         photon_distances[i] = 0;
                     }
-                    photon_distances[PHOTONS_IN_ESTIMATE - 1] = MAX_PHOTON_RADIUS * MAX_PHOTON_RADIUS;
+                    if (x == 896 && y == 243) {
+                        printf("");
+                    }
+                    // int find_nearest_photons(photon **nearest, double *distances, int k, int size, Vec3 *target, kdnode *root, double max_dist)
+                    int found = find_nearest_photons(nearest_photons, photon_distances, PHOTONS_IN_ESTIMATE, 0, &nearest_result, global_tree, 0.2);
 
                     float intensity = 0.3f;
                     if (nearest_photons[0] != nullptr) {
-                        double r = 0.2;
-                        for (int i = PHOTONS_IN_ESTIMATE - 1; i >= 0; i--) {
-                            if (nearest_photons[i] != nullptr) {
-                                r = photon_distances[i];
-                                break;
-                            }
-                        }
-                        for (int i = 0; i < PHOTONS_IN_ESTIMATE; i++) {
+                        double r = photon_distances[0];
+                        for (int i = 0; i < found; i++) {
                             photon *ph = nearest_photons[i];
                             if (ph == nullptr) {
                                 break;
