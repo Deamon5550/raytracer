@@ -134,6 +134,12 @@ void main() {\n\
             z += z0;
         }
 
+        void mul(double x0) {
+            x *= x0;
+            y *= x0;
+            z *= x0;
+        }
+
         double lengthSquared() {
             return x * x + y * y + z * z;
         }
@@ -169,6 +175,11 @@ void main() {\n\
 
     };
 
+    Vec3 cross(Vec3 *a, Vec3 *b) {
+        Vec3 result(a->y * b->z - a->z * b->y, a->z * b->x - a->x * b->z, a->x * b->y - a->y * b->x);
+        return result;
+    }
+
     // An abstract class for an object in the scene
     class SceneObject {
     public:
@@ -177,22 +188,22 @@ void main() {\n\
 
         double x, y, z;
         uint32 color;
-        double shiny;
 
-        float d_red, d_green, d_blue;
-        float s_red, s_green, s_blue;
+        double diffuse;
+        double specular;
     };
 
     // A spherical object in the scene
     class SphereObject : public SceneObject {
     public:
-        SphereObject(double x0, double y0, double z0, double r0, uint32 col, double s) {
+        SphereObject(double x0, double y0, double z0, double r0, uint32 col, double d, double s) {
             x = x0;
             y = y0;
             z = z0;
             r = r0;
             color = col;
-            shiny = s;
+            diffuse = d;
+            specular = s;
         }
 
         bool intersect(Vec3 *camera, Vec3 *ray, Vec3 *result, Vec3 *normal) override {
@@ -226,12 +237,13 @@ void main() {\n\
     // A planar object, although a litle specialized to create the walls of a cornell box
     class PlaneObject : public SceneObject {
     public:
-        PlaneObject(double x0, double y0, double z0, uint32 col, float s) {
+        PlaneObject(double x0, double y0, double z0, uint32 col, double d, double s) {
             x = x0;
             y = y0;
             z = z0;
             color = col;
-            shiny = s;
+            diffuse = d;
+            specular = s;
         }
 
         bool intersect(Vec3 *camera, Vec3 *ray, Vec3 *result, Vec3 *normal) override {
@@ -302,6 +314,7 @@ void main() {\n\
         float x, y, z;
         unsigned char power[4];
         float dx, dy, dz;
+        char bounce;
     };
 
     struct kdnode {
@@ -313,7 +326,7 @@ void main() {\n\
 
     Axis largestAxis(double x, double y, double z) {
         if (x > y) {
-            if(x > z) {
+            if (x > z) {
                 return X_AXIS;
             } else {
                 return Z_AXIS;
@@ -449,37 +462,63 @@ void main() {\n\
     }
 
     void insert(photon **nearest, double *distances, int k, int size, photon *next, double dist) {
-        int i = 0;
-        for (; i < size; i++) {
-            if (distances[i] < dist) {
-                break;
-            }
-        }
         if (size < k) {
-            // push existing nodes backwards
-            for (int j = size; j > i; j--) {
-                nearest[j] = nearest[j - 1];
-                distances[j] = distances[j - 1];
-            }
+            int i = size;
             nearest[i] = next;
             distances[i] = dist;
-        } else if(i == size) {
-            // otherwise we're going to evict the farthest node
-            for (int j = 0; j < i - 1; j++) {
-                nearest[j] = nearest[j + 1];
-                distances[j] = distances[j + 1];
+            while (i != 0) {
+                // heapify up
+                int parent = (int) floor((i - 1) / 2);
+                if (distances[parent] >= distances[i]) {
+                    break;
+                }
+                double t = distances[parent];
+                photon *tp = nearest[parent];
+                distances[parent] = distances[i];
+                nearest[parent] = nearest[i];
+                distances[i] = t;
+                nearest[i] = tp;
+                i = parent;
             }
-            nearest[i - 1] = next;
-            distances[i - 1] = dist;
         } else {
-            // otherwise we're going to evict the farthest node
-            for (int j = 0; j < i; j++) {
-                nearest[j] = nearest[j + 1];
-                distances[j] = distances[j + 1];
+            if (dist > distances[0]) {
+                return;
             }
-            nearest[i] = next;
-            distances[i] = dist;
+            distances[0] = dist;
+            nearest[0] = next;
+            int i = 0;
+            while (i < 31) {
+                // heapify down the largest child node
+                if (distances[2 * i + 1] < distances[2 * i + 2]) {
+                    if (distances[2 * i + 2] > distances[i]) {
+                        int parent = i;
+                        i = 2 * i + 2;
+                        double t = distances[parent];
+                        photon *tp = nearest[parent];
+                        distances[parent] = distances[i];
+                        nearest[parent] = nearest[i];
+                        distances[i] = t;
+                        nearest[i] = tp;
+                    } else {
+                        break;
+                    }
+                } else {
+                    if (distances[2 * i + 1] > distances[i]) {
+                        int parent = i;
+                        i = 2 * i + 1;
+                        double t = distances[parent];
+                        photon *tp = nearest[parent];
+                        distances[parent] = distances[i];
+                        nearest[parent] = nearest[i];
+                        distances[i] = t;
+                        nearest[i] = tp;
+                    } else {
+                        break;
+                    }
+                }
+            }
         }
+
     }
 
     int find_nearest_photons(photon **nearest, double *distances, int k, int size, Vec3 *target, kdnode *root, double max_dist) {
@@ -525,14 +564,33 @@ void main() {\n\
                 size = find_nearest_photons(nearest, distances, k, size, target, side_node, max_dist);
             }
         }
-        
+
         return size;
+    }
+
+    void showPhotons(uint32 *pane, kdnode *tree) {
+
+        double dz = tree->value->z;
+        Vec3 dir(-tree->value->x, -tree->value->y, -12 - tree->value->z);
+        dir.normalize();
+        dir.mul((dz / dir.z));
+
+        int x0 = (int) floor(dir.x * 142) + 640;
+        int y0 = (int) floor(dir.y * 142) + 360;
+        pane[x0 + y0 * 1280] = 0xFFFF00FF;
+
+        if (tree->right != nullptr) {
+            showPhotons(pane, tree->right);
+        }
+        if (tree->left != nullptr) {
+            showPhotons(pane, tree->left);
+        }
     }
 
     void run() {
         // Seed the random engine with the current epoch tick
-        //long long time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-        rand_engine->seed(0);
+        long long time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+        rand_engine->seed(time);
         // Initialize opengl
         if (!glfwInit()) {
             fprintf(stderr, "Failed to initialize GLFW\n");
@@ -627,23 +685,23 @@ void main() {\n\
 #define DIFFUSE_REFLECTION_CONSTANT 0.4f
 #define SPECULAR_REFLECTION_CONSTANT 0.3f
 
-#define NUM_PHOTONS 512
+#define NUM_PHOTONS 2048
 #define LIGHT_POWER 1
-#define MAX_PHOTON_RADIUS 0.6
-#define PHOTONS_IN_ESTIMATE 40
+#define MAX_PHOTON_RADIUS 1
+#define PHOTONS_IN_ESTIMATE 63
 
 #define PHOTON_FLAG_DIRECT 0x8
 
         // Setup our cornell box
 #define NUM_OBJECTS 7
         SceneObject *objects[NUM_OBJECTS];
-        objects[0] = new PlaneObject(0, -5, 0, 0xFFDDDDDD, 10);
-        objects[1] = new PlaneObject(0, 5, 0, 0xFFDD0000, 10);
-        objects[2] = new PlaneObject(5, 0, 0, 0xFF00DD00, 10);
-        objects[3] = new PlaneObject(-5, 0, 0, 0xFF0000DD, 10);
-        objects[4] = new PlaneObject(0, 0, 10, 0xFFDD00DD, 10);
-        objects[5] = new SphereObject(2, -3.5, 3, 1.5, 0xFFFFFF00, 25);
-        objects[6] = new SphereObject(-2, -3.5, 5, 1.5, 0xFF00FFFF, 40);
+        objects[0] = new PlaneObject(0, -5, 0, 0xFFDDDDDD, 0.1, 0.0);
+        objects[1] = new PlaneObject(0, 5, 0, 0xFFDDDDDD, 0.1, 0.0);
+        objects[2] = new PlaneObject(5, 0, 0, 0xFFDD0000, 0.1, 0.0);
+        objects[3] = new PlaneObject(-5, 0, 0, 0xFF0000DD, 0.1, 0.0);
+        objects[4] = new PlaneObject(0, 0, 10, 0xFFDDDDDD, 0.1, 0.0);
+        objects[5] = new SphereObject(2, -3.5, 3, 1.5, 0xFFFFFF00, 0.1, 0.0);
+        objects[6] = new SphereObject(-2, -3.5, 5, 1.5, 0xFF00FFFF, 0.0, 1.0);
 
 
         // photon mapping
@@ -655,7 +713,7 @@ void main() {\n\
         Vec3 ray(0, 0, 0);
         Vec3 result(0, 0, 0);
         Vec3 normal(0, 0, 0);
-        Vec3 ray_source(0, 0, 0);
+        Vec3 light_source(0, 4.96, 4);
         float nearest = 4096 * 4096;
         SceneObject *nearest_obj = nullptr;
         Vec3 nearest_result(0, 0, 0);
@@ -675,7 +733,7 @@ void main() {\n\
                 double x0 = unif(*rand_engine) * 2 - 1;
                 double z0 = unif(*rand_engine) * 2 + 3;
                 double y0 = 4.95;
-                ray_source.set(x0, y0, z0);
+                light_source.set(x0, y0, z0);
                 // direction based on cosine distribution
                 // formula for distribution from https://www.particleincell.com/2015/cosine-distribution/
                 double sin_theta = sqrt(unif(*rand_engine));
@@ -683,48 +741,77 @@ void main() {\n\
                 double psi = unif(*rand_engine) * 6.2831853;
                 Vec3 light_dir(sin_theta * cos(psi), -cos_theta, sin_theta * sin(psi));
                 light_dir.normalize();
+                int bounces = 0;
+                while (true) {
+                    bounces++;
+                    // trace photon
 
-                // trace photon
-
-                nearest = 1024 * 1024;
-                nearest_obj = nullptr;
-                for (int i = 0; i < NUM_OBJECTS; i++) {
-                    if (objects[i]->intersect(&ray_source, &light_dir, &result, &normal)) {
-                        double dist = result.distSquared(&ray_source);
-                        if (dist < nearest) {
-                            nearest = dist;
-                            nearest_obj = objects[i];
-                            nearest_result.set(result.x, result.y, result.z);
-                            nearest_normal.set(normal.x, normal.y, normal.z);
+                    nearest = 1024 * 1024;
+                    nearest_obj = nullptr;
+                    for (int i = 0; i < NUM_OBJECTS; i++) {
+                        if (objects[i]->intersect(&light_source, &light_dir, &result, &normal)) {
+                            double dist = result.distSquared(&light_source);
+                            if (dist < nearest) {
+                                nearest = dist;
+                                nearest_obj = objects[i];
+                                nearest_result.set(result.x, result.y, result.z);
+                                nearest_normal.set(normal.x, normal.y, normal.z);
+                            }
                         }
                     }
-                }
-                if (nearest_obj == nullptr) {
-                    continue;
-                }
-                // we have a hit time to decide whether to reflect, absorb, or transmit
-                double chance = unif(*rand_engine);
-                // @TODO use the diffuse and specular reflection values for each color band pg. 17
-                // @TODO also support transmission
-                if (chance < 0) {
-                    // diffuse reflection
-                } else if (chance < 0.01) {
-                    // specular reflection
-                } else {
-                    // absorption
-                    photon *next = new photon;
-                    next->x = nearest_result.x;
-                    next->y = nearest_result.y;
-                    next->z = nearest_result.z;
-                    next->power[0] = 80;
-                    next->power[1] = 255;
-                    next->power[2] = 255;
-                    next->power[3] = 255;
-                    next->dx = light_dir.x;
-                    next->dy = light_dir.y;
-                    next->dz = light_dir.z;
-                    photons[photon_index++] = next;
-                    //printf("photon %.1f %.1f %.1f\n", next->x, next->y, next->z);
+                    if (nearest_obj == nullptr) {
+                        break;
+                    }
+                    // we have a hit time to decide whether to reflect, absorb, or transmit
+                    double chance = unif(*rand_engine);
+                    if (bounces > 3) {
+                        // force an absorption if we've already bounced too many times
+                        chance = 1;
+                    }
+                    // @TODO use the diffuse and specular reflection values for each color band pg. 17
+                    // @TODO also support transmission
+                    if (chance < nearest_obj->diffuse) {
+                        // diffuse reflection
+                        light_source.set(nearest_result.x, nearest_result.y, nearest_result.z);
+                        double sin_theta = sqrt(unif(*rand_engine));
+                        double cos_theta = sqrt(1 - sin_theta*sin_theta);
+                        double psi = unif(*rand_engine) * 6.2831853;
+                        Vec3 n1(nearest_normal);
+                        n1.mul(cos_theta);
+                        Vec3 n2(n1.y, -n1.x, n1.z);
+                        n2.mul(sin_theta * cos(psi));
+                        Vec3 n3 = cross(&n1, &n2);
+                        n3.mul(sin_theta * sin(psi));
+                        light_dir.set(n1.x + n2.x + n3.x, n1.y + n2.y + n3.y, n1.z + n2.z + n3.z);
+                        light_dir.normalize();
+                        continue;
+                    } else if (chance < nearest_obj->diffuse + nearest_obj->specular) {
+                        // specular reflection
+                        Vec3 n1(nearest_normal);
+                        n1.mul(n1.x * light_dir.x + n1.y * light_dir.y + n1.z * light_dir.z);
+                        n1.mul(2);
+                        light_source.set(nearest_result.x, nearest_result.y, nearest_result.z);
+                        light_dir.set(light_dir.x - n1.x, light_dir.y - n1.y, light_dir.z - n1.z);
+                        light_dir.normalize();
+                        continue;
+                    } else {
+                        // absorption
+                        photon *next = new photon;
+                        next->x = nearest_result.x;
+                        next->y = nearest_result.y;
+                        next->z = nearest_result.z;
+                        next->power[0] = 80;
+                        next->power[1] = 255;
+                        next->power[2] = 255;
+                        next->power[3] = 255;
+                        next->dx = light_dir.x;
+                        next->dy = light_dir.y;
+                        next->dz = light_dir.z;
+                        next->bounce = bounces;
+                        photons[photon_index++] = next;
+                        //printf("photon %.1f %.1f %.1f\n", next->x, next->y, next->z);
+                    }
+                    break;
                 }
             }
 
@@ -737,77 +824,149 @@ void main() {\n\
 
         // rendering
 
-        ray_source.set(0, 0, -12);
+        Vec3 ray_source(0, 0, -12);
         uint32 *pane = new uint32[1280 * 720];
         Vec3 *light_dir = new Vec3(0, 0, 0);
+        SceneObject *exclude = nullptr;
+        ray_source.set(0, 0, -12);
         for (int x = 0; x < 1280; x++) {
+            ray_source.set(0, 0, -12);
             double x0 = (x - 640) / 64.0 - ray_source.x;
             for (int y = 0; y < 720; y++) {
+                ray_source.set(0, 0, -12);
                 double y0 = (y - 360) / 64.0 - ray_source.y;
-                nearest = 1024 * 1024;
-                nearest_obj = nullptr;
-                for (int i = 0; i < NUM_OBJECTS; i++) {
-                    ray.set(x0, y0, -ray_source.z);
-                    ray.normalize();
-                    if (objects[i]->intersect(&ray_source, &ray, &result, &normal)) {
-                        // Expand: bump mapping
-                        double dist = (result.x - ray_source.x) * (result.x - ray_source.x);
-                        dist += (result.y - ray_source.y) * (result.y - ray_source.y);
-                        dist += (result.z - ray_source.z) * (result.z - ray_source.z);
-                        if (dist < nearest) {
-                            nearest = dist;
-                            nearest_obj = objects[i];
-                            nearest_result.set(result.x, result.y, result.z);
-                            nearest_normal.set(normal.x, normal.y, normal.z);
-                        }
-                    }
+                ray.set(x0, y0, -ray_source.z);
+                ray.normalize();
+                int bounces = 0;
+                exclude = nullptr;
+                if (x == 559 && y == 246) {
+                    printf("");
                 }
-                if (nearest_obj == nullptr) {
-                    pane[x + y * 1280] = 0xFF000000;
-                } else {
-                    photon* nearest_photons[PHOTONS_IN_ESTIMATE];
-                    double photon_distances[PHOTONS_IN_ESTIMATE];
-                    for (int i = 0; i < PHOTONS_IN_ESTIMATE; i++) {
-                        nearest_photons[i] = nullptr;
-                        photon_distances[i] = 0;
+                ray_trace: {
+                    bounces++;
+                    if (bounces > 3) {
+                        pane[x + y * 1280] = 0xFF000000;
+                        break;
                     }
-                    if (x == 907 && y == 289) {
-                        printf("");
-                    }
-                    // int find_nearest_photons(photon **nearest, double *distances, int k, int size, Vec3 *target, kdnode *root, double max_dist)
-                    int found = find_nearest_photons(nearest_photons, photon_distances, PHOTONS_IN_ESTIMATE, 0, &nearest_result, global_tree, 5);
-
-                    float intensity = 0.0f;
-                    if (nearest_photons[0] != nullptr) {
-                        double r = photon_distances[0];
-                        for (int i = 0; i < found; i++) {
-                            photon *ph = nearest_photons[i];
-                            if (ph == nullptr) {
-                                break;
-                            }
-                            double d = -nearest_normal.dot(ph->dx, ph->dy, ph->dz);
-                            if (d <= 0) {
-                                continue;
-                            }
-                            intensity += d * (ph->power[0] / 255.0);
+                    nearest = 1024 * 1024;
+                    nearest_obj = nullptr;
+                    for (int i = 0; i < NUM_OBJECTS; i++) {
+                        if (objects[i] == exclude) {
+                            continue;
                         }
-                        intensity /= (3.141592653589 * 2 * r);
+                        if (objects[i]->intersect(&ray_source, &ray, &result, &normal)) {
+                            // Expand: bump mapping
+                            double dist = (result.x - ray_source.x) * (result.x - ray_source.x);
+                            dist += (result.y - ray_source.y) * (result.y - ray_source.y);
+                            dist += (result.z - ray_source.z) * (result.z - ray_source.z);
+                            if (dist < nearest) {
+                                nearest = dist;
+                                nearest_obj = objects[i];
+                                nearest_result.set(result.x, result.y, result.z);
+                                nearest_normal.set(normal.x, normal.y, normal.z);
+                            }
+                        }
+                    }
+                    if (nearest_obj == nullptr) {
+                        pane[x + y * 1280] = 0xFF000000;
+                    } else if (nearest_result.y > 4.95 && nearest_result.x > -1 && nearest_result.x < 1 && nearest_result.z > 3 && nearest_result.z < 5) {
+                        pane[x + y * 1280] = 0xFFFFFFFF;
+                    } else {
+                        if (nearest_obj->specular > 0.99) {
+                            pane[x + y * 1280] = 0xFFFF00FF;
+                            //break;
+                            Vec3 n1(nearest_normal);
+                            n1.mul(n1.x * ray.x + n1.y * ray.y + n1.z * ray.z);
+                            n1.mul(2);
+                            ray_source.set(nearest_result.x, nearest_result.y, nearest_result.z);
+                            ray.set(ray.x - n1.x, ray.y - n1.y, ray.z - n1.z);
+                            ray.normalize();
+                            exclude = nearest_obj;
+                            goto ray_trace;
+                        }
+                        photon* nearest_photons[PHOTONS_IN_ESTIMATE];
+                        double photon_distances[PHOTONS_IN_ESTIMATE];
+                        for (int i = 0; i < PHOTONS_IN_ESTIMATE; i++) {
+                            nearest_photons[i] = nullptr;
+                            photon_distances[i] = 0;
+                        }
+                        // int find_nearest_photons(photon **nearest, double *distances, int k, int size, Vec3 *target, kdnode *root, double max_dist)
+                        int found = find_nearest_photons(nearest_photons, photon_distances, PHOTONS_IN_ESTIMATE, 0, &nearest_result, global_tree, 100);
+                        float intensity = 0.0f;
+                        if (nearest_photons[0] != nullptr) {
+                            double r = photon_distances[0];
+                            for (int i = 0; i < found; i++) {
+                                photon *ph = nearest_photons[i];
+                                if (ph == nullptr) {
+                                    break;
+                                }
+                                double d = -nearest_normal.dot(ph->dx, ph->dy, ph->dz);
+                                if (d <= 0) {
+                                    continue;
+                                }
+                                Vec3 dist(nearest_result.x - ph->x, nearest_result.y - ph->y, nearest_result.z - ph->z);
+                                dist.mul((dist.x * nearest_normal.x + dist.y * nearest_normal.y + dist.z * nearest_normal.z) / (dist.z * dist.z + dist.z * dist.z + dist.z * dist.z));
+                                if (dist.lengthSquared() > 0.1) {
+                                     continue;
+                                }
+                                float filter = (1 - photon_distances[i] / r);
+                                filter = filter * filter;
+                                intensity += d * (ph->power[0] / 255.0) * filter;
+                            }
+                            intensity /= (3.141592653589 * 1 * r);
+                            if (intensity > 1) {
+                                intensity = 1;
+                            }
+                        }
+
+#define SHADOW_RAY_COUNT 5
+                        // calculate direct illumication with a shadow ray
+                        int light_count = 0;
+                        for (int i = 0; i < SHADOW_RAY_COUNT; i++) {
+                            double x0 = unif(*rand_engine) * 2 - 1;
+                            double z0 = unif(*rand_engine) * 2 + 3;
+                            double y0 = 4.95;
+                            light_source.set(x0, y0, z0);
+                            ray.set(light_source.x - nearest_result.x, light_source.y - nearest_result.y, light_source.z - nearest_result.z);
+                            float max_dist = ray.lengthSquared();
+                            ray.normalize();
+                            for (int i = 0; i < NUM_OBJECTS; i++) {
+                                if (objects[i] == nearest_obj) {
+                                    continue;
+                                }
+                                if (objects[i]->intersect(&nearest_result, &ray, &result, &normal)) {
+                                    if (nearest_result.distSquared(&result) > max_dist) {
+                                        continue;
+                                    }
+                                    light_count++;
+                                    break;
+                                }
+                            }
+                        }
+                        if (light_count < SHADOW_RAY_COUNT) {
+                            double d = nearest_normal.dot(&ray);
+                            if (d > 0) {
+                                intensity += d * 0.12 * (1 - (light_count / (double) SHADOW_RAY_COUNT));
+                            }
+                        }
+
                         if (intensity > 1) {
                             intensity = 1;
                         }
+                        int32 alpha = (nearest_obj->color >> 24) & 0xFF;
+                        int32 red = (nearest_obj->color >> 16) & 0xFF;
+                        red = (int) floor(red * intensity);
+                        int32 green = (nearest_obj->color >> 8) & 0xFF;
+                        green = (int) floor(green * intensity);
+                        int32 blue = (nearest_obj->color) & 0xFF;
+                        blue = (int) floor(blue * intensity);
+                        pane[x + y * 1280] = (alpha << 24) | (red << 16) | (green << 8) | blue;
                     }
-
-                    int32 alpha = (nearest_obj->color >> 24) & 0xFF;
-                    int32 red = (nearest_obj->color >> 16) & 0xFF;
-                    red = (int) floor(red * intensity);
-                    int32 green = (nearest_obj->color >> 8) & 0xFF;
-                    green = (int) floor(green * intensity);
-                    int32 blue = (nearest_obj->color) & 0xFF;
-                    blue = (int) floor(blue * intensity);
-                    pane[x + y * 1280] = (alpha << 24) | (red << 16) | (green << 8) | blue;
                 }
             }
         }
+
+        //showPhotons(pane, global_tree);
 
         // Cleanup
         for (int i = 0; i < NUM_OBJECTS; i++) {
