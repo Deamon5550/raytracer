@@ -1,6 +1,6 @@
 #include <cstdio>
 
-#include "Raytrace.h"
+#include "Render.h"
 
 int main(int argc, char *argv[]) {
     raytrace::run();
