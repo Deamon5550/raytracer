@@ -189,21 +189,25 @@ void main() {\n\
         double x, y, z;
         uint32 color;
 
-        double diffuse;
-        double specular;
+        double diffuse_chance;
+        double specular_chance;
+        double transmission_chance;
+        double refraction;
     };
 
     // A spherical object in the scene
     class SphereObject : public SceneObject {
     public:
-        SphereObject(double x0, double y0, double z0, double r0, uint32 col, double d, double s) {
+        SphereObject(double x0, double y0, double z0, double r0, uint32 col, double d, double s, double t) {
             x = x0;
             y = y0;
             z = z0;
             r = r0;
             color = col;
-            diffuse = d;
-            specular = s;
+            diffuse_chance = d;
+            specular_chance = s;
+            transmission_chance = t;
+            refraction = 0;
         }
 
         bool intersect(Vec3 *camera, Vec3 *ray, Vec3 *result, Vec3 *normal) override {
@@ -237,13 +241,15 @@ void main() {\n\
     // A planar object, although a litle specialized to create the walls of a cornell box
     class PlaneObject : public SceneObject {
     public:
-        PlaneObject(double x0, double y0, double z0, uint32 col, double d, double s) {
+        PlaneObject(double x0, double y0, double z0, uint32 col, double d, double s, double t) {
             x = x0;
             y = y0;
             z = z0;
             color = col;
-            diffuse = d;
-            specular = s;
+            diffuse_chance = d;
+            specular_chance = s;
+            transmission_chance = t;
+            refraction = 0;
         }
 
         bool intersect(Vec3 *camera, Vec3 *ray, Vec3 *result, Vec3 *normal) override {
@@ -687,21 +693,25 @@ void main() {\n\
 
 #define NUM_PHOTONS 2048
 #define LIGHT_POWER 1
-#define MAX_PHOTON_RADIUS 1
+#define MAX_PHOTON_RADIUS 100
 #define PHOTONS_IN_ESTIMATE 63
+
+#define CAUSTIC_PHOTONS 2048
+#define CAUSTIC_PHOTONS_IN_ESTIMATE 63
 
 #define PHOTON_FLAG_DIRECT 0x8
 
         // Setup our cornell box
 #define NUM_OBJECTS 7
         SceneObject *objects[NUM_OBJECTS];
-        objects[0] = new PlaneObject(0, -5, 0, 0xFFDDDDDD, 0.1, 0.0);
-        objects[1] = new PlaneObject(0, 5, 0, 0xFFDDDDDD, 0.1, 0.0);
-        objects[2] = new PlaneObject(5, 0, 0, 0xFFDD0000, 0.1, 0.0);
-        objects[3] = new PlaneObject(-5, 0, 0, 0xFF0000DD, 0.1, 0.0);
-        objects[4] = new PlaneObject(0, 0, 10, 0xFFDDDDDD, 0.1, 0.0);
-        objects[5] = new SphereObject(2, -3.5, 3, 1.5, 0xFFFFFF00, 0.1, 0.0);
-        objects[6] = new SphereObject(-2, -3.5, 5, 1.5, 0xFF00FFFF, 0.0, 1.0);
+        objects[0] = new PlaneObject(0, -5, 0, 0xFFDDDDDD, 0.1, 0.0, 0.0);
+        objects[1] = new PlaneObject(0, 5, 0, 0xFFDDDDDD, 0.1, 0.0, 0.0);
+        objects[2] = new PlaneObject(5, 0, 0, 0xFFDD0000, 0.1, 0.0, 0.0);
+        objects[3] = new PlaneObject(-5, 0, 0, 0xFF0000DD, 0.1, 0.0, 0.0);
+        objects[4] = new PlaneObject(0, 0, 10, 0xFFDDDDDD, 0.1, 0.0, 0.0);
+        objects[5] = new SphereObject(2, -3.5, 3, 1.5, 0xFFFFFF00, 0.0, 0.0, 1.0);
+        objects[5]->refraction = 2.5;
+        objects[6] = new SphereObject(-2, -3.5, 5, 1.5, 0xFF00FFFF, 0.0, 1.0, 0.0);
 
 
         // photon mapping
@@ -724,7 +734,7 @@ void main() {\n\
         // @TODO: the positions should be quasi-randomized to be fairly uniform but not perfectly uniform
 
         kdnode *global_tree;
-        // @TODO: make seperate tree for caustics
+        kdnode *caustic_tree;
         {
             int photon_index = 0;
             int photon_size = NUM_PHOTONS;
@@ -770,7 +780,8 @@ void main() {\n\
                     }
                     // @TODO use the diffuse and specular reflection values for each color band pg. 17
                     // @TODO also support transmission
-                    if (chance < nearest_obj->diffuse) {
+                    // @TODO if object is clear handle refraction
+                    if (chance < nearest_obj->diffuse_chance) {
                         // diffuse reflection
                         light_source.set(nearest_result.x, nearest_result.y, nearest_result.z);
                         double sin_theta = sqrt(unif(*rand_engine));
@@ -785,7 +796,7 @@ void main() {\n\
                         light_dir.set(n1.x + n2.x + n3.x, n1.y + n2.y + n3.y, n1.z + n2.z + n3.z);
                         light_dir.normalize();
                         continue;
-                    } else if (chance < nearest_obj->diffuse + nearest_obj->specular) {
+                    } else if (chance < nearest_obj->diffuse_chance + nearest_obj->specular_chance) {
                         // specular reflection
                         Vec3 n1(nearest_normal);
                         n1.mul(n1.x * light_dir.x + n1.y * light_dir.y + n1.z * light_dir.z);
@@ -794,6 +805,7 @@ void main() {\n\
                         light_dir.set(light_dir.x - n1.x, light_dir.y - n1.y, light_dir.z - n1.z);
                         light_dir.normalize();
                         continue;
+                    } else if (chance < nearest_obj->diffuse_chance + nearest_obj->specular_chance + nearest_obj->transmission_chance) {
                     } else {
                         // absorption
                         photon *next = new photon;
@@ -818,6 +830,131 @@ void main() {\n\
             // process photons
             photon **scratch = new photon*[NUM_PHOTONS];
             global_tree = createKDTree(photons, NUM_PHOTONS, scratch, NUM_PHOTONS);
+            delete[] scratch;
+            delete[] photons;
+        }
+        {
+            int photon_index = 0;
+            int photon_size = CAUSTIC_PHOTONS;
+            photon **photons = new photon*[photon_size];
+            while (photon_index < photon_size) {
+                double x0 = unif(*rand_engine) * 2 - 1;
+                double z0 = unif(*rand_engine) * 2 + 3;
+                double y0 = 4.95;
+                light_source.set(x0, y0, z0);
+                // direction based on cosine distribution
+                // formula for distribution from https://www.particleincell.com/2015/cosine-distribution/
+                double sin_theta = sqrt(unif(*rand_engine));
+                double cos_theta = sqrt(1 - sin_theta*sin_theta);
+                double psi = unif(*rand_engine) * 6.2831853;
+                // we cheat a little for this scene and angle the light more down beause we know our objects are below the light
+                Vec3 light_dir(sin_theta * cos(psi), -2 * cos_theta, sin_theta * sin(psi));
+                light_dir.normalize();
+                int bounces = 0;
+                bool specular_bounce = false;
+                while (true) {
+                    bounces++;
+                    // trace photon
+
+                    nearest = 1024 * 1024;
+                    nearest_obj = nullptr;
+                    for (int i = 0; i < NUM_OBJECTS; i++) {
+                        if (objects[i]->intersect(&light_source, &light_dir, &result, &normal)) {
+                            double dist = result.distSquared(&light_source);
+                            if (dist < nearest) {
+                                nearest = dist;
+                                nearest_obj = objects[i];
+                                nearest_result.set(result.x, result.y, result.z);
+                                nearest_normal.set(normal.x, normal.y, normal.z);
+                            }
+                        }
+                    }
+                    if (nearest_obj == nullptr) {
+                        break;
+                    }
+                    // we have a hit time to decide whether to reflect, absorb, or transmit
+                    double chance = unif(*rand_engine);
+                    if (bounces > 3) {
+                        // force an absorption if we've already bounced too many times
+                        chance = 1;
+                    }
+                    // @TODO use the diffuse and specular reflection values for each color band pg. 17
+                    // @TODO also support transmission
+                    // @TODO if object is clear handle refraction
+                    if (chance < nearest_obj->diffuse_chance) {
+                        // diffuse reflection
+                        light_source.set(nearest_result.x, nearest_result.y, nearest_result.z);
+                        double sin_theta = sqrt(unif(*rand_engine));
+                        double cos_theta = sqrt(1 - sin_theta*sin_theta);
+                        double psi = unif(*rand_engine) * 6.2831853;
+                        Vec3 n1(nearest_normal);
+                        n1.mul(cos_theta);
+                        Vec3 n2(n1.y, -n1.x, n1.z);
+                        n2.mul(sin_theta * cos(psi));
+                        Vec3 n3 = cross(&n1, &n2);
+                        n3.mul(sin_theta * sin(psi));
+                        light_dir.set(n1.x + n2.x + n3.x, n1.y + n2.y + n3.y, n1.z + n2.z + n3.z);
+                        light_dir.normalize();
+                        continue;
+                    } else if (chance < nearest_obj->diffuse_chance + nearest_obj->specular_chance) {
+                        // specular reflection
+                        Vec3 n1(nearest_normal);
+                        n1.mul(n1.x * light_dir.x + n1.y * light_dir.y + n1.z * light_dir.z);
+                        n1.mul(2);
+                        light_source.set(nearest_result.x, nearest_result.y, nearest_result.z);
+                        light_dir.set(light_dir.x - n1.x, light_dir.y - n1.y, light_dir.z - n1.z);
+                        light_dir.normalize();
+                        specular_bounce = true;
+                        continue;
+                    } else if (chance < nearest_obj->diffuse_chance + nearest_obj->specular_chance + nearest_obj->transmission_chance) {
+                        // refract
+                        // Equation from Fundamentals of Computer Graphics 4th edition p 325.
+                        double n = 1 / nearest_obj->refraction;
+                        double d = nearest_normal.x * light_dir.x + nearest_normal.y * light_dir.y + nearest_normal.z * light_dir.z;
+                        Vec3 n1(nearest_normal);
+                        n1.mul(d);
+                        n1.set(light_dir.x - n1.x, light_dir.y - n1.y, light_dir.z - n1.z);
+                        n1.mul(n);
+                        Vec3 n2(nearest_normal);
+                        double s = 1 - (n * n) * (1 - d * d);
+                        n2.mul(sqrt(s));
+                        n1.add(-n2.x, -n2.y, -n2.z);
+                        // n1 is refracted vector
+                        // we should be able to step a tiny part along our refracted ray to avoid
+                        // having to exclude the object we just hit allowing us to hit the otherside
+                        light_source.set(nearest_result.x + n1.x * 0.01, nearest_result.y + n1.y * 0.01, nearest_result.z + n1.z * 0.01);
+                        light_dir.set(n1.x, n1.y, n1.z);
+                        light_dir.normalize();
+                        specular_bounce = true;
+                        continue;
+                    } else {
+                        if (!specular_bounce) {
+                            // not a caustic, skip and try again
+                            break;
+                        }
+                        // absorption
+                        photon *next = new photon;
+                        next->x = nearest_result.x;
+                        next->y = nearest_result.y;
+                        next->z = nearest_result.z;
+                        next->power[0] = 80;
+                        next->power[1] = 255;
+                        next->power[2] = 255;
+                        next->power[3] = 255;
+                        next->dx = light_dir.x;
+                        next->dy = light_dir.y;
+                        next->dz = light_dir.z;
+                        next->bounce = bounces;
+                        photons[photon_index++] = next;
+                        //printf("photon %.1f %.1f %.1f\n", next->x, next->y, next->z);
+                    }
+                    break;
+                }
+            }
+
+            // process photons
+            photon **scratch = new photon*[CAUSTIC_PHOTONS];
+            caustic_tree = createKDTree(photons, CAUSTIC_PHOTONS, scratch, CAUSTIC_PHOTONS);
             delete[] scratch;
             delete[] photons;
         }
@@ -872,9 +1009,29 @@ void main() {\n\
                     } else if (nearest_result.y > 4.95 && nearest_result.x > -1 && nearest_result.x < 1 && nearest_result.z > 3 && nearest_result.z < 5) {
                         pane[x + y * 1280] = 0xFFFFFFFF;
                     } else {
-                        if (nearest_obj->specular > 0.99) {
-                            pane[x + y * 1280] = 0xFFFF00FF;
-                            //break;
+                        double chance = unif(*rand_engine);
+                        if (chance < nearest_obj->transmission_chance) {
+                            // refract
+                            // Equation from Fundamentals of Computer Graphics 4th edition p 325.
+                            double n = 1 / nearest_obj->refraction;
+                            double d = nearest_normal.x * ray.x + nearest_normal.y * ray.y + nearest_normal.z * ray.z;
+                            Vec3 n1(nearest_normal);
+                            n1.mul(d);
+                            n1.set(ray.x - n1.x, ray.y - n1.y, ray.z - n1.z);
+                            n1.mul(n);
+                            Vec3 n2(nearest_normal);
+                            double s = 1 - (n * n) * (1 - d * d);
+                            n2.mul(sqrt(s));
+                            n1.add(-n2.x, -n2.y, -n2.z);
+                            // n1 is refracted vector
+                            // we should be able to step a tiny part along our refracted ray to avoid
+                            // having to exclude the object we just hit allowing us to hit the otherside
+                            ray_source.set(nearest_result.x + n1.x * 0.01, nearest_result.y + n1.y * 0.01, nearest_result.z + n1.z * 0.01);
+                            ray.set(n1.x, n1.y, n1.z);
+                            ray.normalize();
+                            goto ray_trace;
+                        } else if (chance < nearest_obj->transmission_chance + nearest_obj->specular_chance) {
+                            // calculate reflection angle
                             Vec3 n1(nearest_normal);
                             n1.mul(n1.x * ray.x + n1.y * ray.y + n1.z * ray.z);
                             n1.mul(2);
@@ -882,6 +1039,7 @@ void main() {\n\
                             ray.set(ray.x - n1.x, ray.y - n1.y, ray.z - n1.z);
                             ray.normalize();
                             exclude = nearest_obj;
+                            // continue trace
                             goto ray_trace;
                         }
                         photon* nearest_photons[PHOTONS_IN_ESTIMATE];
@@ -890,35 +1048,67 @@ void main() {\n\
                             nearest_photons[i] = nullptr;
                             photon_distances[i] = 0;
                         }
-                        // int find_nearest_photons(photon **nearest, double *distances, int k, int size, Vec3 *target, kdnode *root, double max_dist)
-                        int found = find_nearest_photons(nearest_photons, photon_distances, PHOTONS_IN_ESTIMATE, 0, &nearest_result, global_tree, 100);
                         float intensity = 0.0f;
-                        if (nearest_photons[0] != nullptr) {
-                            double r = photon_distances[0];
-                            for (int i = 0; i < found; i++) {
-                                photon *ph = nearest_photons[i];
-                                if (ph == nullptr) {
-                                    break;
+                        {
+                            int found = find_nearest_photons(nearest_photons, photon_distances, PHOTONS_IN_ESTIMATE, 0, &nearest_result, global_tree, MAX_PHOTON_RADIUS);
+                            if (nearest_photons[0] != nullptr) {
+                                double r = photon_distances[0];
+                                for (int i = 0; i < found; i++) {
+                                    photon *ph = nearest_photons[i];
+                                    if (ph == nullptr) {
+                                        break;
+                                    }
+                                    double d = -nearest_normal.dot(ph->dx, ph->dy, ph->dz);
+                                    if (d <= 0) {
+                                        continue;
+                                    }
+                                    Vec3 dist(nearest_result.x - ph->x, nearest_result.y - ph->y, nearest_result.z - ph->z);
+                                    dist.mul((dist.x * nearest_normal.x + dist.y * nearest_normal.y + dist.z * nearest_normal.z) / (dist.z * dist.z + dist.z * dist.z + dist.z * dist.z));
+                                    if (dist.lengthSquared() > 0.1) {
+                                        continue;
+                                    }
+                                    float filter = (1 - photon_distances[i] / r);
+                                    filter = filter * filter;
+                                    intensity += d * (ph->power[0] / 255.0) * filter;
                                 }
-                                double d = -nearest_normal.dot(ph->dx, ph->dy, ph->dz);
-                                if (d <= 0) {
-                                    continue;
+                                intensity /= (3.141592653589 * 1 * r);
+                                if (intensity > 1) {
+                                    intensity = 1;
                                 }
-                                Vec3 dist(nearest_result.x - ph->x, nearest_result.y - ph->y, nearest_result.z - ph->z);
-                                dist.mul((dist.x * nearest_normal.x + dist.y * nearest_normal.y + dist.z * nearest_normal.z) / (dist.z * dist.z + dist.z * dist.z + dist.z * dist.z));
-                                if (dist.lengthSquared() > 0.1) {
-                                     continue;
-                                }
-                                float filter = (1 - photon_distances[i] / r);
-                                filter = filter * filter;
-                                intensity += d * (ph->power[0] / 255.0) * filter;
                             }
-                            intensity /= (3.141592653589 * 1 * r);
-                            if (intensity > 1) {
-                                intensity = 1;
+                        }
+                        { // caustics
+                            float caustic_contribution = 0;
+                            int found = find_nearest_photons(nearest_photons, photon_distances, CAUSTIC_PHOTONS_IN_ESTIMATE, 0, &nearest_result, caustic_tree, 100);
+                            if (nearest_photons[0] != nullptr) {
+                                double r = photon_distances[0];
+                                for (int i = 0; i < found; i++) {
+                                    photon *ph = nearest_photons[i];
+                                    if (ph == nullptr) {
+                                        break;
+                                    }
+                                    double d = -nearest_normal.dot(ph->dx, ph->dy, ph->dz);
+                                    if (d <= 0) {
+                                        continue;
+                                    }
+                                    Vec3 dist(nearest_result.x - ph->x, nearest_result.y - ph->y, nearest_result.z - ph->z);
+                                    dist.mul((dist.x * nearest_normal.x + dist.y * nearest_normal.y + dist.z * nearest_normal.z) / (dist.z * dist.z + dist.z * dist.z + dist.z * dist.z));
+                                    if (dist.lengthSquared() > 0.1) {
+                                        continue;
+                                    }
+                                    float filter = (1 - photon_distances[i] / r);
+                                    filter = filter * filter * filter * filter;
+                                    caustic_contribution += d * filter;
+                                }
+                                caustic_contribution /= (3.141592653589 * 4 * r);
+                                intensity += caustic_contribution;
+                                if (intensity > 1) {
+                                    intensity = 1;
+                                }
                             }
                         }
 
+#if USE_SHADOW_RAYS
 #define SHADOW_RAY_COUNT 5
                         // calculate direct illumication with a shadow ray
                         int light_count = 0;
@@ -949,6 +1139,7 @@ void main() {\n\
                                 intensity += d * 0.12 * (1 - (light_count / (double) SHADOW_RAY_COUNT));
                             }
                         }
+#endif
 
                         if (intensity > 1) {
                             intensity = 1;
@@ -966,7 +1157,7 @@ void main() {\n\
             }
         }
 
-        //showPhotons(pane, global_tree);
+        //showPhotons(pane, caustic_tree);
 
         // Cleanup
         for (int i = 0; i < NUM_OBJECTS; i++) {
