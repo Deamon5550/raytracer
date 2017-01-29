@@ -5,15 +5,6 @@
 #include <cstring>
 #include <chrono>
 
-#ifdef WINDOWS
-#include <windows.h>
-#include <direct.h>
-#include <io.h>
-#endif
-#ifdef LINUX
-#include <unistd.h>
-#endif
-
 #include "Scene.h"
 #include "Raytrace.h"
 #include "Random.h"
@@ -214,7 +205,7 @@ void main() {\n\
         scene->objects[1] = new PlaneObject(0, 5, 0, -5, 5, 0xFFDDDDDD, 0.1, 0.0, 0.0);
         scene->objects[2] = new PlaneObject(5, 0, 0, -5, 5, 0xFFDD0000, 0.1, 0.0, 0.0);
         scene->objects[3] = new PlaneObject(-5, 0, 0, -5, 5, 0xFF0000DD, 0.1, 0.0, 0.0);
-        scene->objects[4] = new PlaneObject(0, 0, 10, 0, 10, 0xFFDDDDDD, 0.1, 0.0, 0.0);
+        scene->objects[4] = new PlaneObject(0, 0, 10, -5, 5, 0xFFDDDDDD, 0.1, 0.0, 0.0);
         scene->objects[5] = new SphereObject(2, -3.5, 3, 1.5, 0xFFFFFF00, 0.0, 0.0, 1.0);
         scene->objects[5]->refraction = 2.5;
         scene->objects[6] = new SphereObject(-2, -3.5, 5, 1.5, 0xFF00FFFF, 0.0, 1.0, 0.0);

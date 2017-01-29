@@ -4,6 +4,8 @@
 #include <cstdio>
 #include <chrono>
 
+#include "JobSystem.h"
+
 #define NUM_PHOTONS 2048
 #define LIGHT_POWER 1
 #define MAX_PHOTON_RADIUS 100
@@ -11,6 +13,9 @@
 
 #define CAUSTIC_PHOTONS 2048
 #define CAUSTIC_PHOTONS_IN_ESTIMATE 63
+
+//#define USE_SHADOW_RAYS
+#define SHADOW_RAY_COUNT 5
 
 namespace raytrace {
 
@@ -126,7 +131,6 @@ namespace raytrace {
             }
 
 #if USE_SHADOW_RAYS
-#define SHADOW_RAY_COUNT 5
             // calculate direct illumication with a shadow ray
             int light_count = 0;
             for (int i = 0; i < SHADOW_RAY_COUNT; i++) {
@@ -172,6 +176,34 @@ namespace raytrace {
         }
     }
 
+    struct render_task_data {
+        int32 y;
+        int32 width;
+        int32 height;
+        uint32 *pane;
+        Scene *scene;
+        kdnode *global_tree;
+        kdnode *caustic_tree;
+    };
+
+    void render_task(void *vdata) {
+        render_task_data *data = (render_task_data*) vdata;
+        Vec3 ray(0, 0, 0);
+        Vec3 ray_source(0, 0, -12);
+        Vec3 *light_dir = new Vec3(0, 0, 0);
+        SceneObject *exclude = nullptr;
+        ray_source.set(0, 0, -12);
+        double last_progress = 0;
+        for (int32 x = 0; x < data->width; x++) {
+            ray_source.set(0, 0, -12);
+            double x0 = (x - data->width / 2) / 64.0 - ray_source.x;
+            double y0 = (data->y - data->height / 2) / 64.0 - ray_source.y;
+            ray.set(x0, y0, -ray_source.z);
+            ray.normalize();
+            data->pane[x + data->y *data->width] = traceRay(ray_source, ray, data->scene, nullptr, 0, data->global_tree, data->caustic_tree);
+        }
+    }
+
     void renderScene(Scene *scene, uint32 *pane, int32 width, int32 height) {
         // photon mapping
         // Based on "A Practical Guide to Global Illumination using Photon Maps" from Siggraph 2000
@@ -189,28 +221,21 @@ namespace raytrace {
         // rendering
         printf("Rendering scene\n");
         auto start = std::chrono::high_resolution_clock::now();
-        Vec3 ray_source(0, 0, -12);
-        Vec3 *light_dir = new Vec3(0, 0, 0);
-        SceneObject *exclude = nullptr;
-        ray_source.set(0, 0, -12);
-        double last_progress = 0;
-        for (int32 x = 0; x < width; x++) {
-            auto progress = std::chrono::high_resolution_clock::now();
-            std::chrono::duration<double> progress_duration = progress - start;
-            if (progress_duration.count() > last_progress + 1) {
-                printf("%.2f%% complete\n", x / 12.8f);
-                last_progress += 1;
-            }
-            ray_source.set(0, 0, -12);
-            double x0 = (x - width / 2) / 64.0 - ray_source.x;
-            for (int32 y = 0; y < height; y++) {
-                ray_source.set(0, 0, -12);
-                double y0 = (y - height / 2) / 64.0 - ray_source.y;
-                ray.set(x0, y0, -ray_source.z);
-                ray.normalize();
-                pane[x + y * width] = traceRay(ray_source, ray, scene, nullptr, 0, global_tree, caustic_tree);
-            }
+
+
+        for (int32 y = 0; y < height; y++) {
+            render_task_data *data = new render_task_data;
+            data->y = y;
+            data->width = width;
+            data->height = height;
+            data->pane = pane;
+            data->scene = scene;
+            data->global_tree = global_tree;
+            data->caustic_tree = caustic_tree;
+            scheduler::submit(render_task, data);
         }
+
+        scheduler::waitForCompletion();
         auto end = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double> duration = end - start;
         printf("Scene rendered in %.3fs\n", duration.count());

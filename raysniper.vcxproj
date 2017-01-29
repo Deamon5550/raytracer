@@ -118,6 +118,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="src\JobSystem.cpp" />
     <ClCompile Include="src\Main.cpp" />
     <ClCompile Include="src\Raytrace.cpp" />
     <ClCompile Include="src\Vector.cpp" />
@@ -127,6 +128,7 @@
     <ClCompile Include="src\Scene.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\JobSystem.h" />
     <ClInclude Include="src\Raytrace.h" />
     <ClInclude Include="src\Vector.h" />
     <ClInclude Include="src\PhotonMap.h" />
