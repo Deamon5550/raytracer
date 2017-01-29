@@ -2,7 +2,7 @@
 
 #include "Vector.h"
 
-namespace random {
+namespace randutil {
 
     void init(int64 seed);
 

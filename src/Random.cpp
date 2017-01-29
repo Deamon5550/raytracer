@@ -3,7 +3,7 @@
 
 #include <random>
 
-namespace random {
+namespace randutil {
 
     std::default_random_engine *rand_engine = new std::default_random_engine;
     std::uniform_real_distribution<double> *real_dist;

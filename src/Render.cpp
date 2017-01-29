@@ -106,7 +106,7 @@ void main() {\n\
     void run() {
         // Seed the random engine with the current epoch tick
         int64 time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-        random::init(time);
+        randutil::init(time);
         // Initialize opengl
         if (!glfwInit()) {
             fprintf(stderr, "Failed to initialize GLFW\n");

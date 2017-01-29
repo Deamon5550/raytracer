@@ -73,7 +73,7 @@ namespace raytrace {
     */
 
     photon *findMedianPhoton(photon** photons, int size, Axis axis) {
-        int k = random::nextInt(0, size);
+        int k = randutil::nextInt(0, size);
         photon *p = photons[k];
         photon** scratch = new photon*[size];
         int less_index = 0;
@@ -329,15 +329,15 @@ namespace raytrace {
         Vec3 photon_power(light_color);
         while (photon_index < photon_size) {
             photon_power.set(&light_color);
-            double x0 = random::nextDouble() * 2 - 1;
-            double z0 = random::nextDouble() * 2 + 3;
+            double x0 = randutil::nextDouble() * 2 - 1;
+            double z0 = randutil::nextDouble() * 2 + 3;
             double y0 = 4.95;
             light_source.set(x0, y0, z0);
             // direction based on cosine distribution
             // formula for distribution from https://www.particleincell.com/2015/cosine-distribution/
-            double sin_theta = sqrt(random::nextDouble());
+            double sin_theta = sqrt(randutil::nextDouble());
             double cos_theta = sqrt(1 - sin_theta*sin_theta);
-            double psi = random::nextDouble() * 6.2831853;
+            double psi = randutil::nextDouble() * 6.2831853;
             Vec3 light_dir(sin_theta * cos(psi), -cos_theta, sin_theta * sin(psi));
             light_dir.normalize();
             int bounces = 0;
@@ -351,7 +351,7 @@ namespace raytrace {
                     break;
                 }
                 // we have a hit time to decide whether to reflect, absorb, or transmit
-                double chance = random::nextDouble();
+                double chance = randutil::nextDouble();
                 if (bounces > 3) {
                     // force an absorption if we've already bounced too many times
                     chance = 1;
@@ -455,15 +455,15 @@ namespace raytrace {
         Vec3 photon_power(light_color);
         while (photon_index < photon_size) {
             photon_power.set(&light_color);
-            double x0 = random::nextDouble() * 2 - 1;
-            double z0 = random::nextDouble() * 2 + 3;
+            double x0 = randutil::nextDouble() * 2 - 1;
+            double z0 = randutil::nextDouble() * 2 + 3;
             double y0 = 4.95;
             light_source.set(x0, y0, z0);
             // direction based on cosine distribution
             // formula for distribution from https://www.particleincell.com/2015/cosine-distribution/
-            double sin_theta = sqrt(random::nextDouble());
+            double sin_theta = sqrt(randutil::nextDouble());
             double cos_theta = sqrt(1 - sin_theta*sin_theta);
-            double psi = random::nextDouble() * 6.2831853;
+            double psi = randutil::nextDouble() * 6.2831853;
             // we cheat a little for this scene and angle the light more down beause we know our objects are below the light
             Vec3 light_dir(sin_theta * cos(psi), -2 * cos_theta, sin_theta * sin(psi));
             light_dir.normalize();
@@ -478,7 +478,7 @@ namespace raytrace {
                     break;
                 }
                 // we have a hit time to decide whether to reflect, absorb, or transmit
-                double chance = random::nextDouble();
+                double chance = randutil::nextDouble();
                 if (bounces > 3) {
                     // force an absorption if we've already bounced too many times
                     chance = 1;
@@ -489,9 +489,9 @@ namespace raytrace {
                 if (chance < nearest_obj->diffuse_chance) {
                     // diffuse reflection
                     light_source.set(nearest_result.x, nearest_result.y, nearest_result.z);
-                    double sin_theta = sqrt(random::nextDouble());
+                    double sin_theta = sqrt(randutil::nextDouble());
                     double cos_theta = sqrt(1 - sin_theta*sin_theta);
-                    double psi = random::nextDouble() * 6.2831853;
+                    double psi = randutil::nextDouble() * 6.2831853;
                     Vec3 n1(nearest_normal);
                     n1.mul(cos_theta);
                     Vec3 n2(n1.y, -n1.x, n1.z);

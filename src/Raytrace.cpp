@@ -25,7 +25,7 @@ namespace raytrace {
         Vec3 nearest_result(0, 0, 0);
         Vec3 nearest_normal(0, 0, 0);
         SceneObject *nearest_obj = nullptr;
-        scene->intersect(ray_source, ray, exclude, &nearest_result, &nearest_normal, &nearest_obj, random::nextDouble());
+        scene->intersect(ray_source, ray, exclude, &nearest_result, &nearest_normal, &nearest_obj, randutil::nextDouble());
         if (nearest_obj == nullptr) {
             return 0xFF000000;
         } else if (nearest_result.y > 4.95 && nearest_result.x > -1 && nearest_result.x < 1 && nearest_result.z > 3 && nearest_result.z < 5) {
@@ -145,14 +145,14 @@ namespace raytrace {
                 Vec3 result(0, 0, 0);
                 Vec3 normal(0, 0, 0);
                 for (int i = 0; i < SHADOW_RAY_COUNT; i++) {
-                    double x0 = random::nextDouble() * 2 - 1;
-                    double z0 = random::nextDouble() * 2 + 3;
+                    double x0 = randutil::nextDouble() * 2 - 1;
+                    double z0 = randutil::nextDouble() * 2 + 3;
                     double y0 = 4.95;
                     light_source.set(x0, y0, z0);
                     shadow_ray.set(light_source.x - nearest_result.x, light_source.y - nearest_result.y, light_source.z - nearest_result.z);
                     double max_dist = shadow_ray.lengthSquared();
                     shadow_ray.normalize();
-                    double dt = random::nextDouble();
+                    double dt = randutil::nextDouble();
                     for (int i = 0; i < scene->size; i++) {
                         if (scene->objects[i] == nearest_obj) {
                             continue;
@@ -243,8 +243,8 @@ namespace raytrace {
                 printf("");
             }
             ray_source.set(data->camera);
-            double x1 = random::nextDouble() * 0.6 - 0.3;
-            double y1 = random::nextDouble() * 0.6 - 0.3;
+            double x1 = randutil::nextDouble() * 0.6 - 0.3;
+            double y1 = randutil::nextDouble() * 0.6 - 0.3;
             double x0 = (x - data->width / 2 + x1) / fov - ray_source.x;
             double y0 = (data->y - data->height / 2 + y1) / fov - ray_source.y;
             ray.set(x0, y0, -ray_source.z);
