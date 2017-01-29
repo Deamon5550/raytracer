@@ -209,16 +209,40 @@ void main() {\n\
         scene->objects[5] = new SphereObject(2, -3.5, 3, 1.5, 0xFFFFFFFF, 0.0, 0.1, 0.9, 0.0);
         scene->objects[5]->refraction = 2.5;
         scene->objects[6] = new SphereObject(-2, -3.5, 5, 1.5, 0xFFFFFFFF, 0.0, 1.0, 0.0, 0.0);
+        //scene->objects[7] = new SphereObject(0, 1, 5, 0.8, 0xFF33FF33, 0.4, 0.0, 0.0, 1.0, 0.2, 0, 0);
 
-        uint32 *pane = new uint32[1280 * 720];
-        raytrace::renderScene(scene, pane, 1280, 720);
+        int32 sample_ratio = 1;
+        uint32 *pane = new uint32[1280 * 720 * sample_ratio * sample_ratio];
+        Vec3 camera(0, 0, -12);
+        raytrace::renderScene(scene, camera, pane, 1280 * sample_ratio, 720 * sample_ratio);
+
+        uint32 *sample = new uint32[1280 * 720];
+        for (int x = 0; x < 1280; x++) {
+            for (int y = 0; y < 720; y++) {
+                int32 red = 0;
+                int32 green = 0;
+                int32 blue = 0;
+                for (int x0 = 0; x0 < sample_ratio; x0++) {
+                    for (int y0 = 0; y0 < sample_ratio; y0++) {
+                        int32 s = pane[x * sample_ratio + x0 + (y * sample_ratio + y0) * 1280 * sample_ratio];
+                        red += (s >> 16) & 0xFF;
+                        green += (s >> 8) & 0xFF;
+                        blue += s & 0xFF;
+                    }
+                }
+                red /= sample_ratio * sample_ratio;
+                green /= sample_ratio * sample_ratio;
+                blue /= sample_ratio * sample_ratio;
+                sample[x + y * 1280] = (0xFF << 24) | (red << 16) | (green << 8) | blue;
+            }
+        }
 
         // Cleanup
         delete scene;
 
         // Upload our pane to our texture
         glBindTexture(GL_TEXTURE_2D, tex);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1280, 720, 0, GL_BGRA, GL_UNSIGNED_BYTE, pane);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1280, 720, 0, GL_BGRA, GL_UNSIGNED_BYTE, sample);
 
         while (!glfwWindowShouldClose(window)) {
 

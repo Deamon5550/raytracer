@@ -30,6 +30,12 @@ namespace raytrace {
         z = z0;
     }
 
+    Vec3::Vec3(Vec3 *s) {
+        x = s->x;
+        y = s->y;
+        z = s->z;
+    }
+
     void Vec3::set(double x0, double y0, double z0) {
         x = x0;
         y = y0;

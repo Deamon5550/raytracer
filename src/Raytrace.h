@@ -7,6 +7,6 @@
 
 namespace raytrace {
 
-    void renderScene(Scene *scene, uint32 *pane, int32 width, int32 height);
+    void renderScene(Scene *scene, Vec3 &camera, uint32 *pane, int32 width, int32 height);
 
 }

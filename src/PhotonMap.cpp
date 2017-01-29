@@ -346,7 +346,7 @@ namespace raytrace {
                 bounces++;
                 // trace photon
 
-                scene->intersect(light_source, light_dir, exclude, &nearest_result, &nearest_normal, &nearest_obj);
+                scene->intersect(light_source, light_dir, exclude, &nearest_result, &nearest_normal, &nearest_obj, 0);
                 if (nearest_obj == nullptr) {
                     break;
                 }
@@ -473,7 +473,7 @@ namespace raytrace {
                 bounces++;
                 // trace photon
 
-                scene->intersect(light_source, light_dir, nullptr, &nearest_result, &nearest_normal, &nearest_obj);
+                scene->intersect(light_source, light_dir, nullptr, &nearest_result, &nearest_normal, &nearest_obj, 0);
                 if (nearest_obj == nullptr) {
                     break;
                 }

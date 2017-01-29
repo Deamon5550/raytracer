@@ -25,7 +25,7 @@ namespace raytrace {
         Vec3 nearest_result(0, 0, 0);
         Vec3 nearest_normal(0, 0, 0);
         SceneObject *nearest_obj = nullptr;
-        scene->intersect(ray_source, ray, exclude, &nearest_result, &nearest_normal, &nearest_obj);
+        scene->intersect(ray_source, ray, exclude, &nearest_result, &nearest_normal, &nearest_obj, random::nextDouble());
         if (nearest_obj == nullptr) {
             return 0xFF000000;
         } else if (nearest_result.y > 4.95 && nearest_result.x > -1 && nearest_result.x < 1 && nearest_result.z > 3 && nearest_result.z < 5) {
@@ -128,9 +128,9 @@ namespace raytrace {
                             }
                             double filter = (1 - photon_distances[i] / r);
                             filter = filter * filter * filter * filter;
-                            redcaustic_contribution += d * filter * min(ph->power[0] / 255.0f + 0.3, 1);
-                            greencaustic_contribution += d * filter * min(ph->power[1] / 255.0f + 0.3, 1);
-                            bluecaustic_contribution += d * filter * min(ph->power[2] / 255.0f + 0.3, 1);
+                            redcaustic_contribution += d * filter * min(ph->power[0] / 255.0f + 0.5, 1);
+                            greencaustic_contribution += d * filter * min(ph->power[1] / 255.0f + 0.5, 1);
+                            bluecaustic_contribution += d * filter * min(ph->power[2] / 255.0f + 0.5, 1);
                         }
                         redcaustic_contribution /= (3.141592653589 * 8 * r);
                         greencaustic_contribution /= (3.141592653589 * 8 * r);
@@ -152,11 +152,12 @@ namespace raytrace {
                     shadow_ray.set(light_source.x - nearest_result.x, light_source.y - nearest_result.y, light_source.z - nearest_result.z);
                     double max_dist = shadow_ray.lengthSquared();
                     shadow_ray.normalize();
+                    double dt = random::nextDouble();
                     for (int i = 0; i < scene->size; i++) {
                         if (scene->objects[i] == nearest_obj) {
                             continue;
                         }
-                        if (scene->objects[i]->intersect(&nearest_result, &shadow_ray, &result, &normal)) {
+                        if (scene->objects[i]->intersect(&nearest_result, &shadow_ray, &result, &normal, dt)) {
                             if (nearest_result.distSquared(&result) > max_dist) {
                                 continue;
                             }
@@ -225,30 +226,34 @@ namespace raytrace {
         kdnode *global_tree;
         kdnode *caustic_tree;
         Vec3 *light_color;
+        Vec3 *camera;
     };
 
     void render_task(void *vdata) {
         render_task_data *data = (render_task_data*) vdata;
         Vec3 ray(0, 0, 0);
-        Vec3 ray_source(0, 0, -12);
+        Vec3 ray_source(data->camera);
         Vec3 *light_dir = new Vec3(0, 0, 0);
         SceneObject *exclude = nullptr;
         ray_source.set(0, 0, -12);
         double last_progress = 0;
+        double fov = (data->width / 1280.0) * 64.0;
         for (int32 x = 0; x < data->width; x++) {
             if (x == 500 && data->y == 100) {
                 printf("");
             }
-            ray_source.set(0, 0, -12);
-            double x0 = (x - data->width / 2) / 64.0 - ray_source.x;
-            double y0 = (data->y - data->height / 2) / 64.0 - ray_source.y;
+            ray_source.set(data->camera);
+            double x1 = random::nextDouble() * 0.6 - 0.3;
+            double y1 = random::nextDouble() * 0.6 - 0.3;
+            double x0 = (x - data->width / 2 + x1) / fov - ray_source.x;
+            double y0 = (data->y - data->height / 2 + y1) / fov - ray_source.y;
             ray.set(x0, y0, -ray_source.z);
             ray.normalize();
             data->pane[x + data->y *data->width] = traceRay(ray_source, ray, data->scene, nullptr, 0, data->global_tree, data->caustic_tree, data->light_color);
         }
     }
 
-    void renderScene(Scene *scene, uint32 *pane, int32 width, int32 height) {
+    void renderScene(Scene *scene, Vec3 &camera, uint32 *pane, int32 width, int32 height) {
         // photon mapping
         // Based on "A Practical Guide to Global Illumination using Photon Maps" from Siggraph 2000
         // https://graphics.stanford.edu/courses/cs348b-00/course8.pdf
@@ -278,6 +283,7 @@ namespace raytrace {
             data->global_tree = global_tree;
             data->caustic_tree = caustic_tree;
             data->light_color = &light_color;
+            data->camera = &camera;
             scheduler::submit(render_task, data);
         }
 

@@ -19,6 +19,7 @@ namespace raytrace {
     class Vec3 {
     public:
         Vec3(double x0, double y0, double z0);
+        Vec3(Vec3 *s);
 
         void set(double x0, double y0, double z0);
         void set(Vec3 *o);
