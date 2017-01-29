@@ -2,6 +2,8 @@
 #include "PhotonMap.h"
 
 #include <chrono>
+#include <cmath>
+#include <cstdio>
 
 #include "Random.h"
 
