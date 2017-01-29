@@ -82,6 +82,7 @@
       <Optimization>Disabled</Optimization>
       <SDLCheck>true</SDLCheck>
       <AdditionalIncludeDirectories>src;include</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>_MBCS;%(PreprocessorDefinitions);_CRT_SECURE_NO_WARNINGS</PreprocessorDefinitions>
     </ClCompile>
     <Link>
       <AdditionalDependencies>lib/x64/*.lib;%(AdditionalDependencies)</AdditionalDependencies>
@@ -118,6 +119,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="src\Image.cpp" />
     <ClCompile Include="src\JobSystem.cpp" />
     <ClCompile Include="src\Main.cpp" />
     <ClCompile Include="src\Raytrace.cpp" />
@@ -128,8 +130,10 @@
     <ClCompile Include="src\Scene.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\Image.h" />
     <ClInclude Include="src\JobSystem.h" />
     <ClInclude Include="src\Raytrace.h" />
+    <ClInclude Include="src\stb_image_write.h" />
     <ClInclude Include="src\Vector.h" />
     <ClInclude Include="src\PhotonMap.h" />
     <ClInclude Include="src\Random.h" />
