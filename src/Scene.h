@@ -11,12 +11,14 @@ namespace raytrace {
         virtual bool intersect(Vec3 *ray_source, Vec3 *ray, Vec3 *result, Vec3 *result_normal) = 0;
 
         double x, y, z;
-        uint32 color;
+        float red, green, blue;
 
+        double absorb_chance;
         double diffuse_chance;
         double specular_chance;
         double transmission_chance;
         double refraction;
+        double specular_coeff;
     };
 
     class Scene {
@@ -34,7 +36,7 @@ namespace raytrace {
     // A spherical object in the scene
     class SphereObject : public SceneObject {
     public:
-        SphereObject(double x0, double y0, double z0, double r0, uint32 col, double d, double s, double t);
+        SphereObject(double x0, double y0, double z0, double r0, uint32 col, double d, double s, double t, double a);
 
         bool intersect(Vec3 *ray_source, Vec3 *ray, Vec3 *result, Vec3 *result_normal) override;
 
@@ -45,7 +47,7 @@ namespace raytrace {
     class PlaneObject : public SceneObject {
     public:
         // x0,y0,z0 should form a unit vector in the axis of the plane, arbitrary planes not supported
-        PlaneObject(double x0, double y0, double z0, double min, double max, uint32 col, double d, double s, double t);
+        PlaneObject(double x0, double y0, double z0, double min, double max, uint32 col, double d, double s, double t, double a);
 
         bool intersect(Vec3 *camera, Vec3 *ray, Vec3 *result, Vec3 *normal) override;
 

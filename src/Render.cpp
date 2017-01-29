@@ -201,14 +201,14 @@ void main() {\n\
         printf("Setting up scene\n");
         // Setup our cornell box
         Scene *scene = new Scene(7);
-        scene->objects[0] = new PlaneObject(0, -5, 0, -5, 5, 0xFFDDDDDD, 0.1, 0.0, 0.0);
-        scene->objects[1] = new PlaneObject(0, 5, 0, -5, 5, 0xFFDDDDDD, 0.1, 0.0, 0.0);
-        scene->objects[2] = new PlaneObject(5, 0, 0, -5, 5, 0xFFDD0000, 0.1, 0.0, 0.0);
-        scene->objects[3] = new PlaneObject(-5, 0, 0, -5, 5, 0xFF0000DD, 0.1, 0.0, 0.0);
-        scene->objects[4] = new PlaneObject(0, 0, 10, -5, 5, 0xFFDDDDDD, 0.1, 0.0, 0.0);
-        scene->objects[5] = new SphereObject(2, -3.5, 3, 1.5, 0xFFFFFF00, 0.0, 0.0, 1.0);
+        scene->objects[0] = new PlaneObject(0, -5, 0, -5, 5, 0xFFEEEEEE, 0.4, 0.0, 0.0, 1.0);
+        scene->objects[1] = new PlaneObject(0, 5, 0, -5, 5, 0xFFDEEEEEE, 0.4, 0.0, 0.0, 1.0);
+        scene->objects[2] = new PlaneObject(5, 0, 0, -5, 5, 0xFFFF3333, 0.4, 0.0, 0.0, 1.0);
+        scene->objects[3] = new PlaneObject(-5, 0, 0, -5, 5, 0xFF3333FF, 0.4, 0.0, 0.0, 1.0);
+        scene->objects[4] = new PlaneObject(0, 0, 10, -5, 5, 0xFFEEEEEE, 0.4, 0.0, 0.0, 1.0);
+        scene->objects[5] = new SphereObject(2, -3.5, 3, 1.5, 0xFFFFFFFF, 0.0, 0.1, 0.9, 0.0);
         scene->objects[5]->refraction = 2.5;
-        scene->objects[6] = new SphereObject(-2, -3.5, 5, 1.5, 0xFF00FFFF, 0.0, 1.0, 0.0);
+        scene->objects[6] = new SphereObject(-2, -3.5, 5, 1.5, 0xFFFFFFFF, 0.0, 1.0, 0.0, 0.0);
 
         uint32 *pane = new uint32[1280 * 720];
         raytrace::renderScene(scene, pane, 1280, 720);

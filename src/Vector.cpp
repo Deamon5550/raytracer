@@ -10,6 +10,15 @@ namespace raytrace {
         return x < xi ? xi - 1 : xi;
     }
 
+    int32 fastfloor(double x) {
+        int32 xi = (int32) x;
+        return x < xi ? xi - 1 : xi;
+    }
+
+    int32 min(int32 a, int32 b) {
+        return a < b ? a : b;
+    }
+
     Vec3 cross(Vec3 *a, Vec3 *b) {
         Vec3 result(a->y * b->z - a->z * b->y, a->z * b->x - a->x * b->z, a->x * b->y - a->y * b->x);
         return result;
@@ -61,6 +70,12 @@ namespace raytrace {
         x *= x0;
         y *= x0;
         z *= x0;
+    }
+
+    void Vec3::mul(double x0, double y0, double z0) {
+        x *= x0;
+        y *= y0;
+        z *= z0;
     }
 
     double Vec3::lengthSquared() {

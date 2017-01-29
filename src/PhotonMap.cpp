@@ -7,6 +7,71 @@
 
 namespace raytrace {
 
+    /* iterative
+    photon *findMedianPhoton(photon** photons_, int size, Axis axis) {
+        photon** scratch = new photon*[size];
+        photon** photons = new photon*[size];
+        for (int i = 0; i < size; i++) {
+            photons[i] = photons_[i];
+        }
+        photon *r;
+        while (true) {
+            if (size < 3) {
+                r = photons[0];
+                break;
+            }
+            int k = random::nextInt(0, size);
+            photon *p = photons[k];
+            int less_index = 0;
+            int great_index = size - 1;
+            double p_val;
+            if (axis == X_AXIS) {
+                p_val = p->x;
+            } else if (axis == Y_AXIS) {
+                p_val = p->y;
+            } else {
+                p_val = p->z;
+            }
+            for (int i = 0; i < size; i++) {
+                photon *next = photons[i];
+                if (next == p) {
+                    continue;
+                }
+                double val;
+                if (axis == X_AXIS) {
+                    val = next->x;
+                } else if (axis == Y_AXIS) {
+                    val = next->y;
+                } else {
+                    val = next->z;
+                }
+                if (val <= p_val) {
+                    scratch[less_index++] = next;
+                } else {
+                    scratch[great_index--] = next;
+                }
+            }
+            if (less_index == size / 2) {
+                r = p;
+                break;
+            } else if (less_index > size / 2) {
+                size = less_index;
+                for (int i = 0; i < size; i++) {
+                    photons[i] = scratch[i];
+                }
+            } else {
+                photons += great_index + 1;
+                size -= great_index + 1;
+                for (int i = 0; i < size; i++) {
+                    photons[i] = scratch[i + great_index + 1];
+                }
+            }
+        }
+        delete[] scratch;
+        return r;
+    }
+    */
+
     photon *findMedianPhoton(photon** photons, int size, Axis axis) {
         int k = random::nextInt(0, size);
         photon *p = photons[k];
@@ -134,7 +199,7 @@ namespace raytrace {
             distances[i] = dist;
             while (i != 0) {
                 // heapify up
-                int parent = fastfloor((i - 1) / 2);
+                int parent = (i - 1) / 2;
                 if (distances[parent] >= distances[i]) {
                     break;
                 }
@@ -188,9 +253,9 @@ namespace raytrace {
     }
 
     int find_nearest_photons(photon **nearest, double *distances, int k, int size, Vec3 *target, kdnode *root, double max_dist) {
-        float dx = root->value->x - target->x;
-        float dy = root->value->y - target->y;
-        float dz = root->value->z - target->z;
+        double dx = root->value->x - target->x;
+        double dy = root->value->y - target->y;
+        double dz = root->value->z - target->z;
         double dist = dx * dx + dy * dy + dz * dz;
         if (dist < max_dist) {
             if (size < k) {
@@ -204,7 +269,7 @@ namespace raytrace {
         // determine which side of the splitting plane we are on
         // true is positive side
         bool side = true;
-        float axis_dist;
+        double axis_dist;
         if (root->splitting_axis == X_AXIS) {
             side = target->x <= root->value->x;
             axis_dist = dx * dx;
@@ -253,7 +318,7 @@ namespace raytrace {
         }
     }
 
-    kdnode *createPhotonMap(int32 photon_size, Vec3 &light_source, Scene *scene) {
+    kdnode *createPhotonMap(int32 photon_size, Vec3 &light_source, Vec3 &light_color, Scene *scene) {
         printf("Building global photon map from %d photons\n", photon_size);
         auto start = std::chrono::high_resolution_clock::now();
         int photon_index = 0;
@@ -261,7 +326,9 @@ namespace raytrace {
         SceneObject *nearest_obj = nullptr;
         Vec3 nearest_result(0, 0, 0);
         Vec3 nearest_normal(0, 0, 0);
+        Vec3 photon_power(light_color);
         while (photon_index < photon_size) {
+            photon_power.set(&light_color);
             double x0 = random::nextDouble() * 2 - 1;
             double z0 = random::nextDouble() * 2 + 3;
             double y0 = 4.95;
@@ -274,11 +341,12 @@ namespace raytrace {
             Vec3 light_dir(sin_theta * cos(psi), -cos_theta, sin_theta * sin(psi));
             light_dir.normalize();
             int bounces = 0;
+            SceneObject *exclude = nullptr;
             while (true) {
                 bounces++;
                 // trace photon
 
-                scene->intersect(light_source, light_dir, nullptr, &nearest_result, &nearest_normal, &nearest_obj);
+                scene->intersect(light_source, light_dir, exclude, &nearest_result, &nearest_normal, &nearest_obj);
                 if (nearest_obj == nullptr) {
                     break;
                 }
@@ -291,22 +359,25 @@ namespace raytrace {
                 // @TODO use the diffuse and specular reflection values for each color band pg. 17
                 // @TODO also support transmission
                 // @TODO if object is clear handle refraction
-                if (chance < nearest_obj->diffuse_chance) {
+                /*if (chance < nearest_obj->diffuse_chance) {
                     // diffuse reflection
                     light_source.set(nearest_result.x, nearest_result.y, nearest_result.z);
                     double sin_theta = sqrt(random::nextDouble());
                     double cos_theta = sqrt(1 - sin_theta*sin_theta);
                     double psi = random::nextDouble() * 6.2831853;
                     Vec3 n1(nearest_normal);
-                    n1.mul(cos_theta);
+                    n1.mul(0.5 * cos_theta);
                     Vec3 n2(n1.y, -n1.x, n1.z);
                     n2.mul(sin_theta * cos(psi));
                     Vec3 n3 = cross(&n1, &n2);
                     n3.mul(sin_theta * sin(psi));
                     light_dir.set(n1.x + n2.x + n3.x, n1.y + n2.y + n3.y, n1.z + n2.z + n3.z);
                     light_dir.normalize();
+                    photon_power.mul(nearest_obj->red, nearest_obj->green, nearest_obj->blue);
+                    exclude = nearest_obj;
                     continue;
-                } else if (chance < nearest_obj->diffuse_chance + nearest_obj->specular_chance) {
+                } else */
+                    if (chance < nearest_obj->diffuse_chance + nearest_obj->specular_chance) {
                     // specular reflection
                     Vec3 n1(nearest_normal);
                     n1.mul(n1.x * light_dir.x + n1.y * light_dir.y + n1.z * light_dir.z);
@@ -314,21 +385,41 @@ namespace raytrace {
                     light_source.set(nearest_result.x, nearest_result.y, nearest_result.z);
                     light_dir.set(light_dir.x - n1.x, light_dir.y - n1.y, light_dir.z - n1.z);
                     light_dir.normalize();
+                    photon_power.mul(nearest_obj->red, nearest_obj->green, nearest_obj->blue);
+                    exclude = nearest_obj;
                     continue;
                 } else if (chance < nearest_obj->diffuse_chance + nearest_obj->specular_chance + nearest_obj->transmission_chance) {
+                    double n = 1 / nearest_obj->refraction;
+                    double d = nearest_normal.x * light_dir.x + nearest_normal.y * light_dir.y + nearest_normal.z * light_dir.z;
+                    Vec3 n1(nearest_normal);
+                    n1.mul(d);
+                    n1.set(light_dir.x - n1.x, light_dir.y - n1.y, light_dir.z - n1.z);
+                    n1.mul(n);
+                    Vec3 n2(nearest_normal);
+                    double s = 1 - (n * n) * (1 - d * d);
+                    n2.mul(sqrt(s));
+                    n1.add(-n2.x, -n2.y, -n2.z);
+                    // n1 is refracted vector
+                    // we should be able to step a tiny part along our refracted ray to avoid
+                    // having to exclude the object we just hit allowing us to hit the otherside
+                    light_source.set(nearest_result.x + n1.x * 0.01, nearest_result.y + n1.y * 0.01, nearest_result.z + n1.z * 0.01);
+                    light_dir.set(n1.x, n1.y, n1.z);
+                    light_dir.normalize();
+                    exclude = nullptr;
+                    continue;
                 } else {
                     // absorption
                     photon *next = new photon;
-                    next->x = nearest_result.x;
-                    next->y = nearest_result.y;
-                    next->z = nearest_result.z;
-                    next->power[0] = 80;
-                    next->power[1] = 255;
-                    next->power[2] = 255;
+                    next->x = (float) nearest_result.x;
+                    next->y = (float) nearest_result.y;
+                    next->z = (float) nearest_result.z;
+                    next->power[0] = fastfloor(photon_power.x * 0xFF);
+                    next->power[1] = fastfloor(photon_power.y * 0xFF);
+                    next->power[2] = fastfloor(photon_power.z * 0xFF);
                     next->power[3] = 255;
-                    next->dx = light_dir.x;
-                    next->dy = light_dir.y;
-                    next->dz = light_dir.z;
+                    next->dx = (float) light_dir.x;
+                    next->dy = (float) light_dir.y;
+                    next->dz = (float) light_dir.z;
                     next->bounce = bounces;
                     photons[photon_index++] = next;
                     //printf("photon %.1f %.1f %.1f\n", next->x, next->y, next->z);
@@ -353,7 +444,7 @@ namespace raytrace {
         return global_tree;
     }
 
-    kdnode *createCausticPhotonMap(int32 photon_size, Vec3 &light_source, Scene *scene) {
+    kdnode *createCausticPhotonMap(int32 photon_size, Vec3 &light_source, Vec3 &light_color, Scene *scene) {
         printf("Building caustic photon map from %d photons\n", photon_size);
         auto start = std::chrono::high_resolution_clock::now();
         int photon_index = 0;
@@ -361,7 +452,9 @@ namespace raytrace {
         SceneObject *nearest_obj = nullptr;
         Vec3 nearest_result(0, 0, 0);
         Vec3 nearest_normal(0, 0, 0);
+        Vec3 photon_power(light_color);
         while (photon_index < photon_size) {
+            photon_power.set(&light_color);
             double x0 = random::nextDouble() * 2 - 1;
             double z0 = random::nextDouble() * 2 + 3;
             double y0 = 4.95;
@@ -407,6 +500,7 @@ namespace raytrace {
                     n3.mul(sin_theta * sin(psi));
                     light_dir.set(n1.x + n2.x + n3.x, n1.y + n2.y + n3.y, n1.z + n2.z + n3.z);
                     light_dir.normalize();
+                    photon_power.mul(nearest_obj->red, nearest_obj->green, nearest_obj->blue);
                     continue;
                 } else if (chance < nearest_obj->diffuse_chance + nearest_obj->specular_chance) {
                     // specular reflection
@@ -417,6 +511,7 @@ namespace raytrace {
                     light_dir.set(light_dir.x - n1.x, light_dir.y - n1.y, light_dir.z - n1.z);
                     light_dir.normalize();
                     specular_bounce = true;
+                    photon_power.mul(nearest_obj->red, nearest_obj->green, nearest_obj->blue);
                     continue;
                 } else if (chance < nearest_obj->diffuse_chance + nearest_obj->specular_chance + nearest_obj->transmission_chance) {
                     // refract
@@ -446,16 +541,16 @@ namespace raytrace {
                     }
                     // absorption
                     photon *next = new photon;
-                    next->x = nearest_result.x;
-                    next->y = nearest_result.y;
-                    next->z = nearest_result.z;
-                    next->power[0] = 80;
-                    next->power[1] = 255;
-                    next->power[2] = 255;
+                    next->x = (float) nearest_result.x;
+                    next->y = (float) nearest_result.y;
+                    next->z = (float) nearest_result.z;
+                    next->power[0] = fastfloor(photon_power.x * 0xFF);
+                    next->power[1] = fastfloor(photon_power.y * 0xFF);
+                    next->power[2] = fastfloor(photon_power.z * 0xFF);
                     next->power[3] = 255;
-                    next->dx = light_dir.x;
-                    next->dy = light_dir.y;
-                    next->dz = light_dir.z;
+                    next->dx = (float) light_dir.x;
+                    next->dy = (float) light_dir.y;
+                    next->dz = (float) light_dir.z;
                     next->bounce = bounces;
                     photons[photon_index++] = next;
                     //printf("photon %.1f %.1f %.1f\n", next->x, next->y, next->z);

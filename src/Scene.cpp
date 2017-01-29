@@ -45,16 +45,20 @@ namespace raytrace {
         *hit_object = nearest_obj;
     }
 
-    SphereObject::SphereObject(double x0, double y0, double z0, double r0, uint32 col, double d, double s, double t) {
+    SphereObject::SphereObject(double x0, double y0, double z0, double r0, uint32 col, double d, double s, double t, double a) {
         x = x0;
         y = y0;
         z = z0;
         radius = r0;
-        color = col;
+        red = ((col >> 16) & 0xFF) / 255.0f;
+        green = ((col >> 8) & 0xFF) / 255.0f;
+        blue = ((col) & 0xFF) / 255.0f;
+        absorb_chance = a;
         diffuse_chance = d;
         specular_chance = s;
         transmission_chance = t;
         refraction = 0;
+        specular_coeff = 0;
     }
 
     bool SphereObject::intersect(Vec3 *ray_source, Vec3 *ray, Vec3 *result, Vec3 *result_normal) {
@@ -82,17 +86,21 @@ namespace raytrace {
         return true;
     }
 
-    PlaneObject::PlaneObject(double x0, double y0, double z0, double min, double max, uint32 col, double d, double s, double t) {
+    PlaneObject::PlaneObject(double x0, double y0, double z0, double min, double max, uint32 col, double d, double s, double t, double a) {
         x = x0;
         y = y0;
         z = z0;
-        color = col;
+        red = ((col >> 16) & 0xFF) / 255.0f;
+        green = ((col >> 8) & 0xFF) / 255.0f;
+        blue = ((col) & 0xFF) / 255.0f;
+        absorb_chance = a;
         diffuse_chance = d;
         specular_chance = s;
         transmission_chance = t;
         refraction = 0;
         max_bound = max;
         min_bound = min;
+        specular_coeff = 0;
     }
 
     bool PlaneObject::intersect(Vec3 *camera, Vec3 *ray, Vec3 *result, Vec3 *normal) {

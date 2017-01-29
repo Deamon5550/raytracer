@@ -12,6 +12,8 @@ typedef unsigned long long uint64;
 namespace raytrace {
 
     int32 fastfloor(float value);
+    int32 fastfloor(double value);
+    int32 min(int32 a, int32 b);
 
     // A simple 3d vector of 3 doubles
     class Vec3 {
@@ -25,6 +27,7 @@ namespace raytrace {
         void sub(double x0, double y0, double z0);
         void sub(Vec3 *o);
         void mul(double x0);
+        void mul(double x0, double y0, double z0);
 
         double lengthSquared();
         double length();

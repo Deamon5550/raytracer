@@ -9,7 +9,8 @@ namespace random {
     std::uniform_real_distribution<double> *real_dist;
 
     void init(int64 seed) {
-        rand_engine->seed(seed);
+        int32 s = (int32) ((((uint64) seed) >> 32) ^ seed);
+        rand_engine->seed(s);
         real_dist = new std::uniform_real_distribution<double>(0, 1);
     }
 

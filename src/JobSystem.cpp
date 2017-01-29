@@ -68,6 +68,7 @@ namespace scheduler {
     }
 
     void startWorkers(int count) {
+        printf("Starting jobs system with %d workers\n", count);
         thread_count = count;
         jobs_head = nullptr;
         jobs_tail = nullptr;
@@ -97,18 +98,12 @@ namespace scheduler {
     }
 
     void waitForCompletion() {
-        {
-            std::lock_guard<std::mutex> guard(job_mutex);
-            running = false;
-        }
+        running = false;
         while (true) {
-            {
-                std::lock_guard<std::mutex> guard(job_mutex);
-                if (jobs_head == nullptr && finished == thread_count) {
-                    break;
-                } else {
-                    sleep(1);
-                }
+            if (jobs_head == nullptr && finished == thread_count) {
+                break;
+            } else {
+                sleep(1);
             }
         }
     }

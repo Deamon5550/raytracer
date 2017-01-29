@@ -25,8 +25,8 @@ namespace raytrace {
     int find_nearest_photons(photon **nearest, double *distances, int k, int size, Vec3 *target, kdnode *root, double max_dist);
     void showPhotons(uint32 *pane, kdnode *tree);
 
-    kdnode *createPhotonMap(int32 photon_count, Vec3 &light_source, Scene *scene);
-    kdnode *createCausticPhotonMap(int32 photon_count, Vec3 &light_source, Scene *scene);
+    kdnode *createPhotonMap(int32 photon_count, Vec3 &light_source, Vec3 &light_color, Scene *scene);
+    kdnode *createCausticPhotonMap(int32 photon_count, Vec3 &light_source, Vec3 &light_color, Scene *scene);
 
     void deleteTree(kdnode *tree);
 }
