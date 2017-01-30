@@ -26,6 +26,7 @@ namespace raytrace {
         scene->objects[5] = new SphereObject(2, -3.5, 3, 1.5, 0xFFFFFFFF, 0.0, 0.1, 0.9, 0.0);
         scene->objects[5]->refraction = 2.5;
         scene->objects[6] = new SphereObject(-2, -3.5, 5, 1.5, 0xFFFFFFFF, 0.0, 1.0, 0.0, 0.0);
+        // This is a smaller ball with some motion to test motion blur
         //scene->objects[7] = new SphereObject(0, 1, 5, 0.8, 0xFF33FF33, 0.4, 0.0, 0.0, 1.0, 0.2, 0, 0);
 
         uint32 *pane = new uint32[width * height * sample_ratio * sample_ratio];
@@ -35,6 +36,8 @@ namespace raytrace {
         uint32 *sample = new uint32[width * height];
         for (int x = 0; x < width; x++) {
             for (int y = 0; y < height; y++) {
+                // each pixel is the averaged result of an n x n square of pixels in the pane
+                // the size of n is determined by the sample_ratio
                 int32 red = 0;
                 int32 green = 0;
                 int32 blue = 0;
@@ -57,6 +60,7 @@ namespace raytrace {
         delete scene;
         delete[] pane;
 
+        // Write out our final image
         stbi_write_png(image_file, width, height, 4, sample, width * 4);
 #ifdef _WIN32
         system(image_file);

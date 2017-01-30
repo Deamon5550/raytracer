@@ -13,7 +13,7 @@
 
 int main(int argc, char *argv[]) {
     if (argc != 5) {
-        printf("Usage: ./raytracer [# cores] [width] [height] [samples]");
+        printf("Usage: ./raytracer [# cores] [width] [height] [samples]\n");
         return 0;
     }
     int cores = atoi(argv[1]);

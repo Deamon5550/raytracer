@@ -9,73 +9,10 @@
 
 namespace raytrace {
 
-    /* iterative
-    photon *findMedianPhoton(photon** photons_, int size, Axis axis) {
-        photon** scratch = new photon*[size];
-        photon** photons = new photon*[size];
-        for (int i = 0; i < size; i++) {
-            photons[i] = photons_[i];
-        }
-        photon *r;
-        while (true) {
-            if (size < 3) {
-                r = photons[0];
-                break;
-            }
-            int k = random::nextInt(0, size);
-            photon *p = photons[k];
-            int less_index = 0;
-            int great_index = size - 1;
-            double p_val;
-            if (axis == X_AXIS) {
-                p_val = p->x;
-            } else if (axis == Y_AXIS) {
-                p_val = p->y;
-            } else {
-                p_val = p->z;
-            }
-            for (int i = 0; i < size; i++) {
-                photon *next = photons[i];
-                if (next == p) {
-                    continue;
-                }
-                double val;
-                if (axis == X_AXIS) {
-                    val = next->x;
-                } else if (axis == Y_AXIS) {
-                    val = next->y;
-                } else {
-                    val = next->z;
-                }
-                if (val <= p_val) {
-                    scratch[less_index++] = next;
-                } else {
-                    scratch[great_index--] = next;
-                }
-            }
-            if (less_index == size / 2) {
-                r = p;
-                break;
-            } else if (less_index > size / 2) {
-                size = less_index;
-                for (int i = 0; i < size; i++) {
-                    photons[i] = scratch[i];
-                }
-            } else {
-                photons += great_index + 1;
-                size -= great_index + 1;
-                for (int i = 0; i < size; i++) {
-                    photons[i] = scratch[i + great_index + 1];
-                }
-            }
-        }
-        delete[] scratch;
-        return r;
-    }
-    */
-
+    // A recursive method to find the median photon by only computing a partial sort
     photon *findMedianPhoton(photon** photons, int size, Axis axis) {
         int k = randutil::nextInt(0, size);
+        // choose a photon at random
         photon *p = photons[k];
         photon** scratch = new photon*[size];
         int less_index = 0;
@@ -88,6 +25,7 @@ namespace raytrace {
         } else {
             p_val = p->z;
         }
+        // split the photons into those less and greater than our chosen photon
         for (int i = 0; i < size; i++) {
             photon *next = photons[i];
             if (next == p) {
@@ -109,19 +47,24 @@ namespace raytrace {
         }
         photon *r;
         if (less_index == size / 2) {
+            // the chosen photon was the median photon
             r = p;
         } else if (less_index > size / 2) {
+            // more photons were less than our photon so recurse into that side
             r = findMedianPhoton(scratch, less_index, axis);
         } else {
+            // more photons were greater than our photon so recurse into that side
             r = findMedianPhoton(scratch + great_index + 1, size - great_index - 1, axis);
         }
         delete[] scratch;
         return r;
     }
 
+    // creates a k dimensional tree from the given array of photons
     kdnode *createKDTree(photon **photons, int size, photon **scratch, int scratch_size) {
         Vec3 min(1000, 1000, 1000);
         Vec3 max(-1000, -1000, -1000);
+        // find the min and max bounds of our photons
         for (int i = 0; i < size; i++) {
             photon *next = photons[i];
             if (next->x < min.x) {
@@ -143,7 +86,7 @@ namespace raytrace {
                 max.z = next->z;
             }
         }
-
+        // we split the photons along the largest axis
         double x_size = (max.x - min.x);
         double y_size = (max.y - min.y);
         double z_size = (max.z - min.z);
@@ -159,6 +102,7 @@ namespace raytrace {
         }
         int less_index = 0;
         int greater_index = size - 1;
+        // split the photons into groups less or greater than our median photon
         for (int i = 0; i < size; i++) {
             photon *next = photons[i];
             if (next == median) {
@@ -181,6 +125,7 @@ namespace raytrace {
         kdnode *node = new kdnode;
         node->splitting_axis = split;
         node->value = median;
+        // recurse into the left and right sides if there are any photons left there
         if (less_index != 0) {
             node->left = createKDTree(scratch, less_index, photons, less_index);
         } else {
@@ -195,7 +140,10 @@ namespace raytrace {
     }
 
     void insert(photon **nearest, double *distances, int k, int size, photon *next, double dist) {
+        // inserts a photon into a max-heap in the `nearest` array
         if (size < k) {
+            // our heap isn't full so just insert the photon into the next slot
+            // and ensure that the heap property is still satisfied
             int i = size;
             nearest[i] = next;
             distances[i] = dist;
@@ -214,6 +162,9 @@ namespace raytrace {
                 i = parent;
             }
         } else {
+            // otherwise if out photon is closer than the farthest away photon (the root
+            // of the max-heap) then replace the root and heapify downwards to ensure the
+            // heap property
             if (dist > distances[0]) {
                 return;
             }
@@ -254,6 +205,8 @@ namespace raytrace {
 
     }
 
+    // performs a nearest neighbour search of a k-dimensional tree to find the nearest set
+    // of photons
     int find_nearest_photons(photon **nearest, double *distances, int k, int size, Vec3 *target, kdnode *root, double max_dist) {
         double dx = root->value->x - target->x;
         double dy = root->value->y - target->y;
@@ -301,6 +254,7 @@ namespace raytrace {
         return size;
     }
 
+    // renders the photons approximately to a pane for debugging
     void showPhotons(uint32 *pane, kdnode *tree) {
 
         double dz = tree->value->z;
@@ -320,6 +274,7 @@ namespace raytrace {
         }
     }
 
+    // creates the global photon map
     kdnode *createPhotonMap(int32 photon_size, Vec3 &light_source, Vec3 &light_color, Scene *scene) {
         printf("Building global photon map from %d photons\n", photon_size);
         auto start = std::chrono::high_resolution_clock::now();
@@ -329,6 +284,7 @@ namespace raytrace {
         Vec3 nearest_result(0, 0, 0);
         Vec3 nearest_normal(0, 0, 0);
         Vec3 photon_power(light_color);
+        // we keep going until we have the desired number of photons in our map
         while (photon_index < photon_size) {
             photon_power.set(&light_color);
             double x0 = randutil::nextDouble() * 2 - 1;
@@ -358,28 +314,7 @@ namespace raytrace {
                     // force an absorption if we've already bounced too many times
                     chance = 1;
                 }
-                // @TODO use the diffuse and specular reflection values for each color band pg. 17
-                // @TODO also support transmission
-                // @TODO if object is clear handle refraction
-                /*if (chance < nearest_obj->diffuse_chance) {
-                    // diffuse reflection
-                    light_source.set(nearest_result.x, nearest_result.y, nearest_result.z);
-                    double sin_theta = sqrt(random::nextDouble());
-                    double cos_theta = sqrt(1 - sin_theta*sin_theta);
-                    double psi = random::nextDouble() * 6.2831853;
-                    Vec3 n1(nearest_normal);
-                    n1.mul(0.5 * cos_theta);
-                    Vec3 n2(n1.y, -n1.x, n1.z);
-                    n2.mul(sin_theta * cos(psi));
-                    Vec3 n3 = cross(&n1, &n2);
-                    n3.mul(sin_theta * sin(psi));
-                    light_dir.set(n1.x + n2.x + n3.x, n1.y + n2.y + n3.y, n1.z + n2.z + n3.z);
-                    light_dir.normalize();
-                    photon_power.mul(nearest_obj->red, nearest_obj->green, nearest_obj->blue);
-                    exclude = nearest_obj;
-                    continue;
-                } else */
-                    if (chance < nearest_obj->diffuse_chance + nearest_obj->specular_chance) {
+                if (chance < nearest_obj->diffuse_chance + nearest_obj->specular_chance) {
                     // specular reflection
                     Vec3 n1(nearest_normal);
                     n1.mul(n1.x * light_dir.x + n1.y * light_dir.y + n1.z * light_dir.z);
@@ -388,9 +323,11 @@ namespace raytrace {
                     light_dir.set(light_dir.x - n1.x, light_dir.y - n1.y, light_dir.z - n1.z);
                     light_dir.normalize();
                     photon_power.mul(nearest_obj->red, nearest_obj->green, nearest_obj->blue);
+                    // exclude the object we just hit from the next search so we don't hit it again
                     exclude = nearest_obj;
                     continue;
                 } else if (chance < nearest_obj->diffuse_chance + nearest_obj->specular_chance + nearest_obj->transmission_chance) {
+                    // transmission
                     double n = 1 / nearest_obj->refraction;
                     double d = nearest_normal.x * light_dir.x + nearest_normal.y * light_dir.y + nearest_normal.z * light_dir.z;
                     Vec3 n1(nearest_normal);
@@ -433,7 +370,9 @@ namespace raytrace {
         std::chrono::duration<double> duration = (end - start);
         printf("Global photons traced in %.3fs\n", duration.count());
 
-        // process photons
+        // we just store the photons into an array when calculating them
+        // and then after we have all the photons we can build the kd-tree
+        // which is more efficient that continually trying to balance the kd-tree
         photon **scratch = new photon*[photon_size];
         printf("Building global photons kd-tree\n");
         start = std::chrono::high_resolution_clock::now();
@@ -446,6 +385,9 @@ namespace raytrace {
         return global_tree;
     }
 
+    // builds the caustic photon map
+    // very similar to the global map except we only store photons which have undergone at
+    // least one reflection or transmission
     kdnode *createCausticPhotonMap(int32 photon_size, Vec3 &light_source, Vec3 &light_color, Scene *scene) {
         printf("Building caustic photon map from %d photons\n", photon_size);
         auto start = std::chrono::high_resolution_clock::now();
@@ -485,26 +427,7 @@ namespace raytrace {
                     // force an absorption if we've already bounced too many times
                     chance = 1;
                 }
-                // @TODO use the diffuse and specular reflection values for each color band pg. 17
-                // @TODO also support transmission
-                // @TODO if object is clear handle refraction
-                if (chance < nearest_obj->diffuse_chance) {
-                    // diffuse reflection
-                    light_source.set(nearest_result.x, nearest_result.y, nearest_result.z);
-                    double sin_theta = sqrt(randutil::nextDouble());
-                    double cos_theta = sqrt(1 - sin_theta*sin_theta);
-                    double psi = randutil::nextDouble() * 6.2831853;
-                    Vec3 n1(nearest_normal);
-                    n1.mul(cos_theta);
-                    Vec3 n2(n1.y, -n1.x, n1.z);
-                    n2.mul(sin_theta * cos(psi));
-                    Vec3 n3 = cross(&n1, &n2);
-                    n3.mul(sin_theta * sin(psi));
-                    light_dir.set(n1.x + n2.x + n3.x, n1.y + n2.y + n3.y, n1.z + n2.z + n3.z);
-                    light_dir.normalize();
-                    photon_power.mul(nearest_obj->red, nearest_obj->green, nearest_obj->blue);
-                    continue;
-                } else if (chance < nearest_obj->diffuse_chance + nearest_obj->specular_chance) {
+                if (chance < nearest_obj->diffuse_chance + nearest_obj->specular_chance) {
                     // specular reflection
                     Vec3 n1(nearest_normal);
                     n1.mul(n1.x * light_dir.x + n1.y * light_dir.y + n1.z * light_dir.z);
@@ -577,6 +500,7 @@ namespace raytrace {
         return caustic_tree;
     }
 
+    // recursively deletes the tree and its children
     void deleteTree(kdnode *tree) {
         if (tree->left != nullptr) {
             deleteTree(tree->left);

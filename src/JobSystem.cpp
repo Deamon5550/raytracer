@@ -14,8 +14,10 @@
 #include <unistd.h>
 #endif
 
+// This is a simple job system to parallelize certain tasks
 namespace scheduler {
 
+    // a cross-platform sleep function with millisecond accuracy
     void sleep(int milli) {
 #ifdef WINDOWS
         Sleep(milli);
@@ -39,6 +41,8 @@ namespace scheduler {
                 std::lock_guard<std::mutex> guard(job_mutex);
                 job = jobs_head;
                 Job *end = nullptr;
+                // Each worker pulls up to 10 tasks from the queue to lower the amount
+                // of time the mutex needs to be held for
                 for (int i = 0; i < 10; i++) {
                     if (jobs_head != nullptr) {
                         end = jobs_head;
@@ -60,6 +64,7 @@ namespace scheduler {
                     break;
                 }
             }
+            // execute the jobs
             while (job != nullptr) {
                 job->job(job->job_data);
                 job = job->next_job;
@@ -67,6 +72,7 @@ namespace scheduler {
         }
     }
 
+    // starts `count` workers
     void startWorkers(int count) {
         printf("Starting jobs system with %d workers\n", count);
         thread_count = count;
@@ -79,6 +85,7 @@ namespace scheduler {
         }
     }
 
+    // inserts a job to the end of the job queue
     void submit(task job, void *job_data) {
         {
             std::lock_guard<std::mutex> guard(job_mutex);
@@ -97,6 +104,8 @@ namespace scheduler {
 
     }
 
+    // waits until all jobs have been completed
+    // also shuts down the scheduler allowing the worker threads to exit
     void waitForCompletion() {
         running = false;
         while (true) {

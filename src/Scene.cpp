@@ -20,6 +20,8 @@ namespace raytrace {
         delete[] objects;
     }
 
+    // intersects with all objects in the scene (except the given excluded object if its not null)
+    // returns the point hit and the surface normal
     void Scene::intersect(Vec3 &ray_source, Vec3 &ray, SceneObject *exclude, Vec3 *final_result, Vec3 *result_normal, SceneObject **hit_object, double dt) {
         double nearest = 1024 * 1024;
         SceneObject *nearest_obj = nullptr;
@@ -30,7 +32,6 @@ namespace raytrace {
                 continue;
             }
             if (objects[i]->intersect(&ray_source, &ray, &result, &normal, dt)) {
-                // Expand: bump mapping
                 double dist = (result.x - ray_source.x) * (result.x - ray_source.x);
                 dist += (result.y - ray_source.y) * (result.y - ray_source.y);
                 dist += (result.z - ray_source.z) * (result.z - ray_source.z);
@@ -84,9 +85,12 @@ namespace raytrace {
     }
 
     bool SphereObject::intersect(Vec3 *ray_source, Vec3 *ray, Vec3 *result, Vec3 *result_normal, double dt) {
+        // A geometric intersection solution
+        // described here: https://www.scratchapixel.com/lessons/3d-basic-rendering/minimal-ray-tracer-rendering-simple-shapes/ray-sphere-intersection
         double x0 = x + dt * dx;
         double y0 = y + dt * dy;
         double z0 = z + dt * dz;
+        // check that we're casting in the right direction
         Vec3 l(x0 - ray_source->x, y0 - ray_source->y, z0 - ray_source->z);
         double b = ray->dot(&l);
         if (b < 0) {
@@ -130,16 +134,20 @@ namespace raytrace {
 
     bool PlaneObject::intersect(Vec3 *camera, Vec3 *ray, Vec3 *result, Vec3 *normal, double dt) {
         if (x != 0) {
+            // find the distance from the source to the plane in the normal of the plane
             double dx = x - camera->x;
             double mul = dx / ray->x;
             if (mul < 0) {
                 return false;
             }
+            // find the distance traveled in the other two dimensions to
+            // reach the plane
             double hz = camera->z + mul * ray->z;
             if (hz < -0.01) {
                 return false;
             }
             double hy = camera->y + mul * ray->y;
+            // check that we're within the bounds of the plane
             if (hy > max_bound || hy < min_bound) {
                 return false;
             }
